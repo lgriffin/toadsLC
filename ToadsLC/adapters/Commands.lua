@@ -5,6 +5,9 @@ local Commands = {}
 ns.Commands = Commands
 
 local HELP = {
+  "/tlc begin <password>  raid leader: protect council traffic with a password for tonight",
+  "/tlc join <password>  officer: join the raid's protected council traffic",
+  "/tlc end  forget the raid password",
   "/tlc session <item> [seconds]  open a loot session for the council",
   "/tlc roll <item> [seconds]  plain priority roll in raid chat",
   "/tlc award [name] [reason]  award the last session (default: what the list says)",
@@ -62,6 +65,11 @@ function handlers.export(rest)
   rest = rest:lower()
   if rest == "clear" then ns.App.exportClear() else ns.App.export(rest == "all") end
 end
+
+-- the password is taken as typed (spaces included), never echoed back
+function handlers.begin(rest) ns.App.beginRaid(rest) end
+function handlers.join(rest) ns.App.joinRaid(rest) end
+handlers["end"] = function() ns.App.endRaid() end
 
 function handlers.status() ns.App.status() end
 function handlers.history() ns.App.history() end

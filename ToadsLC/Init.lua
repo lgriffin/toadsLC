@@ -261,6 +261,13 @@ function App.status()
   end
   local _, ids = Store.records(false)
   Chat.print(string.format("Sessions waiting for export: %d", #ids))
+  local secret, raid = App.secret(), Store.settings().raid
+  if secret then
+    Chat.print(string.format("Raid password: set (%s, fingerprint %s). Every officer should see the same fingerprint.",
+      raid.hosting and "leading" or "joined", secret.fingerprint))
+  else
+    Chat.print("Raid password: none. Council traffic is unsigned; /tlc begin <password> to protect it.")
+  end
 end
 
 function App.history()
@@ -297,8 +304,56 @@ function App.askState()
   C_Timer.After(20, function() if IsInGroup() then send(App.registry:requestState()) end end)
 end
 
+---------------------------------------------------------------------------
+-- raid password: /tlc begin <password> (raid leader), /tlc join <password> (officers)
+---------------------------------------------------------------------------
+
+local RAID_MAX_AGE = 12 * 3600 -- a raid password is forgotten after a night
+local secretCache
+
+function App.secret()
+  local r = Store.settings().raid
+  if not r then return nil end
+  if not secretCache or secretCache.hex ~= r.key then
+    local s = ns.Wire.secret(ns.Crypto.unhex(r.key))
+    s.hex = r.key
+    secretCache = s
+  end
+  return secretCache
+end
+
+local function setPassword(password, hosting)
+  if not password or #password < 6 then
+    Chat.print("Use a password of at least 6 characters, shared with the council only (not raid chat).")
+    return false
+  end
+  local key = ns.Wire.keyFromPassword(password)
+  Store.settings().raid = { key = ns.Crypto.hex(key), hosting = hosting, at = App.now() }
+  return true
+end
+
+function App.beginRaid(password)
+  if not setPassword(password, true) then return end
+  Chat.print("Raid begun. Council traffic is now signed and encrypted (fingerprint " .. App.secret().fingerprint
+    .. "). Officers: /tlc join <the same password>.")
+end
+
+function App.joinRaid(password)
+  if not setPassword(password, false) then return end
+  Chat.print("Joined with fingerprint " .. App.secret().fingerprint .. "; checking it with the raid leader…")
+  send(App.registry:hello())
+end
+
+function App.endRaid()
+  Store.settings().raid = nil
+  secretCache = nil
+  Chat.print("Raid password cleared. Council traffic is unsigned again.")
+end
+
 local function start()
   Store.init()
+  local raid = Store.settings().raid
+  if raid and App.now() - (raid.at or 0) > RAID_MAX_AGE then Store.settings().raid = nil end
   loginTime = App.now()
   App.registry = Session.newRegistry({
     me = Roster.me(),
@@ -306,8 +361,17 @@ local function start()
     item = function(id, name) return Priority.lookup(Store.priorities(), id, name) end,
     who = Roster.who,
     onChange = onChange,
+    secured = function() return App.secret() ~= nil end,
+    hosting = function() local r = Store.settings().raid; return r ~= nil and r.hosting end,
+    notify = function(kind, name)
+      if kind == "welcome" then
+        Chat.print("Raid password matches " .. name .. "'s. You're in the council traffic.")
+      elseif kind == "mismatch" then
+        Chat.print(name .. " tried to join with a different raid password.")
+      end
+    end,
   })
-  Comms.init(function(msg, sender) send(App.registry:handle(msg, sender)) end)
+  Comms.init(function(msg, sender, trusted) send(App.registry:handle(msg, sender, trusted)) end)
   ns.Tooltip.init()
   ns.Commands.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do

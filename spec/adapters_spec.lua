@@ -154,9 +154,33 @@ describe("addon in a fake client", function()
     local found = false
     for _, a in ipairs(W.addon) do
       local m = asm.feed("me", a.text)
+      m = m and W.ns.Codec.decode(m)
       if m and m.t == "STATE_REQUEST" then found = true end
     end
     assert.is_true(found)
+  end)
+
+  it("begins a protected raid, signs council traffic and forgets the password on /tlc end", function()
+    W.slash("begin short")
+    assert.matches("at least 6 characters", W.printed[#W.printed])
+    W.slash("begin frog pond 42")
+    assert.matches("Raid begun%. Council traffic is now signed and encrypted %(fingerprint %x+%)", W.printed[#W.printed])
+    assert.is_nil(_G.ToadsLCDB.settings.raid.password) -- only the derived key is stored
+    W.slash("status")
+    assert.matches("Raid password: set %(leading, fingerprint", table.concat(W.printed, "\n"))
+    W.ns.App.import(sample)
+    W.slash("session [Dragonspine Trophy]")
+    W.flushComms()
+    assert.matches("^1:1/%d+:T1|p|", W.addon[1].text)
+    W.slash("end")
+    assert.is_nil(W.ns.App.secret())
+  end)
+
+  it("sends HELLO on /tlc join", function()
+    W.slash("join frog pond 42")
+    W.flushComms()
+    assert.matches("checking it with the raid leader", W.printed[#W.printed])
+    assert.matches("T1|p|", W.addon[#W.addon].text)
   end)
 
   it("opens a council session and broadcasts it to the raid by addon message", function()
@@ -169,6 +193,7 @@ describe("addon in a fake client", function()
     local asm = W.ns.Codec.newAssembler()
     local msg
     for _, a in ipairs(W.addon) do msg = asm.feed("Poohtank", a.text) or msg end
+    msg = W.ns.Codec.decode(msg)
     assert.are.equal("SESSION_OPEN", msg.t)
     assert.are.same({ "Poohtank", "Hadur", "Anasazi", "Gally" }, msg.co)
     assert.is_true(_G.ToadsLCCouncilFrame:IsShown())

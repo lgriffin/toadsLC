@@ -18,13 +18,14 @@ Gargul can stay installed; both addons add their own tooltip lines.
 
 | When | What |
 | --- | --- |
+| Raid password | The raid leader types `/tlc begin <password>` and the officers `/tlc join <password>`; share it in the officer channel, never raid chat. Each joiner is told whether their password matches the leader's, and `/tlc status` shows a fingerprint everyone on the council should see the same. |
 | Before the raid | On the site, export the priorities JSON. In game: `/tlc import`, paste, press Import. `/tlc status` shows the item count and the list's date. |
 | Item drops | Hover it: the **Priority (Toads LC)** block lists each tier in class colour, your own tier marked `>`. |
 | Council loot | `/tlc session [item] [seconds]`. Raiders answer Main spec / Off-spec / Pass with a note, or just `/roll` (main) or `/roll 99` (off-spec). Officers see the council frame ranked by priority, click a row to vote, right-click to propose. The leader awards from the vote leader, the proposal, *list says*, the highest roll, or *Award to…*. |
 | Plain roll | `/tlc roll [item] [seconds]`. The result is announced in one line when it closes; `/tlc award` records it (or `/tlc award <name> <reason>` for an override). |
 | After the raid | `/tlc export`, Ctrl+C, paste into the site's Import session. Once the site accepts it, `/tlc export clear`. |
 
-Other commands: `/tlc close`, `/tlc reroll` (tied rolls, 15 s, tied names only),
+Other commands: `/tlc end` (forget the raid password), `/tlc close`, `/tlc reroll` (tied rolls, 15 s, tied names only),
 `/tlc undo` (reopen the last award), `/tlc council`, `/tlc history`,
 `/tlc import undo`, `/tlc export all`, `/tlc tooltip on|off`.
 
@@ -49,6 +50,7 @@ everything that touches the WoW API is one file in `ToadsLC/adapters/`.
 | `core/Codec.lua` | JSON encode/decode, schema checks with field paths, chunked wire format for addon messages |
 | `core/Priority.lua` | spec/role tokens, tier matching (`Rogue:*`, `ROLE:Healer`, `ANY`, named players), sheet wording parser, tooltip labels |
 | `core/Resolver.lua` | main spec, then tier, then roll; ties and all-off-spec flagged |
+| `core/Crypto.lua`, `core/Wire.lua` | SHA-256, HMAC, PBKDF2, base64; signing and encrypting addon messages with the raid password |
 | `core/Session.lua` | session state machine and the message registry (open, responses, votes, proposals, close, re-roll, award, late-join state) |
 | `adapters/Tooltip.lua` | Priority block on GameTooltip, ItemRefTooltip and comparison tooltips |
 | `adapters/RollParser.lua` | roll lines from `CHAT_MSG_SYSTEM`, built from the client's own `RANDOM_ROLL_RESULT` |
@@ -81,9 +83,13 @@ CI runs all three on every push (`.github/workflows/test.yml`).
 - **In-game checklist.** Everything above runs in tests against a fake client; it still
   needs the two-person Karazhan run from the design doc (loot frame, bag, chat-link and
   comparison tooltips, roll timing, export select-all).
-- **Privacy.** Council traffic goes over the RAID addon channel as the design says, and
-  non-council clients discard it. Raider responses are whispered to the session leader
-  only. Anyone reading raw addon traffic could still see votes and notes.
+- **Without a raid password**, council traffic is plain JSON on the RAID addon channel:
+  anyone reading raw addon traffic can see votes and notes, and a modified client could
+  send messages that look like an officer's. Use `/tlc begin` / `/tlc join` on raid nights.
+  With a password, every message is signed (HMAC-SHA-256 with a PBKDF2 key; only the key
+  is stored, for 12 hours or until `/tlc end`), and responses, notes, votes, proposals and
+  state are encrypted. Raiders without it still see the open, close and award, but cannot
+  verify them, so a forged public message could at worst show a raider a fake loot frame.
 - **Druid ferals.** Talents cannot tell bear from cat, so an uninspected feral is matched
   on `Druid:*` until the site's `members[]` names the spec or the LC sets it from the frame.
 - Open questions from the design doc (token set, bare "Priest", tier tokens, who may start

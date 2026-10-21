@@ -3,15 +3,16 @@ local H = require("spec.helper")
 -- A fake raid: each client has its own registry; RAID messages reach everyone except the
 -- sender (who applied them already), WHISPER reaches one client. Messages go through the
 -- wire format so the chunking is exercised too.
-local function newRaid(ns, names, priorities)
-  local Codec, Priority, Session = ns.Codec, ns.Priority, ns.Session
+local function newRaid(ns, names, priorities, secrets)
+  local Priority, Session, Wire = ns.Priority, ns.Session, ns.Wire
   local raid = { clients = {}, clock = 1792614670, queue = {}, chat = {} }
   local db = Priority.index(priorities, "Poohtank", 0)
-  local seq = 0
   for _, name in ipairs(names) do
-    local c = { name = name, asm = Codec.newAssembler(), changes = {} }
+    local c = { name = name, changes = {}, secret = secrets and secrets[name] }
+    c.wire = Wire.new({ secret = function() return c.secret end, clock = function() return raid.clock end })
     c.reg = Session.newRegistry({
       me = name,
+      secured = function() return c.secret ~= nil end,
       now = function() return raid.clock end,
       item = function(id, n) return Priority.lookup(db, id, n) end,
       who = function(n) local m = db.members[Priority.nameKey(n)]; return m and { class = m.class, spec = m.spec } end,
@@ -21,8 +22,8 @@ local function newRaid(ns, names, priorities)
   end
   function raid.send(from, outs)
     for _, o in ipairs(outs) do
-      seq = seq + 1
-      for _, chunk in ipairs(Codec.wireChunks(o.msg, tostring(seq))) do
+      for _, chunk in ipairs(raid.clients[from] and raid.clients[from].wire.pack(o.msg, from)
+                             or Wire.new({ secret = function() end }).pack(o.msg, from)) do
         raid.queue[#raid.queue + 1] = { from = from, dist = o.dist, target = o.target, chunk = chunk }
       end
     end
@@ -33,8 +34,8 @@ local function newRaid(ns, names, priorities)
       for name, c in pairs(raid.clients) do
         local deliver = (m.dist == "RAID" and name ~= m.from) or (m.dist == "WHISPER" and Priority.nameKey(m.target) == Priority.nameKey(name))
         if deliver then
-          local msg = c.asm.feed(m.from, m.chunk)
-          if msg then raid.send(name, c.reg:handle(msg, m.from)) end
+          local msg, trusted = c.wire.unpack(m.from, m.chunk)
+          if msg then raid.send(name, c.reg:handle(msg, m.from, trusted)) end
         end
       end
     end
@@ -408,5 +409,100 @@ describe("Resolver ties in highest-roll mode", function()
     r = ns.Resolver.resolve(item, { e("A", "Rogue", 20), e("B", "Rogue", 20), e("C", "Mage", 90) }, rules)
     assert.is_false(r.tie)
     assert.are.equal("C", r.winner.player)
+  end)
+end)
+
+describe("Session with a raid password", function()
+  local ns, Codec, priorities, council
+  before_each(function()
+    ns = H.core()
+    Codec = ns.Codec
+    priorities = assert(Codec.decode(H.read("fixtures/priority.sample.json")))
+    council = { "Poohtank", "Hadur", "Anasazi", "Gally" }
+  end)
+
+  local function setup(secrets)
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Anasazi", "Gally", "Raider" }, priorities, secrets)
+    local outs, s = raid.clients.Poohtank.reg:open({
+      itemId = 28830, itemName = "Dragonspine Trophy", council = council, rules = priorities.rules,
+    })
+    raid.send("Poohtank", outs)
+    raid.flush()
+    return raid, s.id
+  end
+
+  local function keyed(names, password)
+    local secret = ns.Wire.secret(ns.Wire.keyFromPassword(password, 10))
+    local out = {}
+    for _, n in ipairs(names) do out[n] = secret end
+    return out
+  end
+
+  it("runs the whole session when every officer joined with the same password", function()
+    local raid, id = setup(keyed(council, "frog-pond-42"))
+    raid.act("Gally", "respond", id, "main", "Hyjal DPS check")
+    raid.roll("Gally", 97)
+    raid.roll("Anasazi", 41)
+    raid.act("Hadur", "vote", id, "Anasazi")
+    raid.act("Poohtank", "propose", id, "Gally", "Hyjal DPS check")
+    raid.act("Poohtank", "award", id, "Anasazi", "votes")
+    local lead = raid.clients.Poohtank.reg:get(id)
+    for _, officer in ipairs(council) do
+      assert.are.equal(Codec.encode(lead:serialize()), Codec.encode(raid.clients[officer].reg:get(id):serialize()))
+    end
+    assert.are.equal("Gally", lead:entryFor("Gally").player)
+    assert.are.equal("Hyjal DPS check", lead:entryFor("Gally").note)
+    assert.are.equal("Anasazi", raid.clients.Raider.reg:get(id).awardedTo) -- raiders still see the award
+  end)
+
+  it("ignores votes and proposals from anyone without the password", function()
+    local secrets = keyed(council, "frog-pond-42")
+    secrets.Gally = nil -- Gally typed nothing
+    local raid, id = setup(secrets)
+    raid.roll("Anasazi", 41)
+    raid.act("Gally", "vote", id, "Anasazi")
+    raid.send("Raider", { { msg = { t = "VOTE", s = id, p = "Raider" }, dist = "RAID" } })
+    raid.send("Raider", { { msg = { t = "PROPOSE", s = id, p = "Raider", re = "trust me" }, dist = "RAID" } })
+    raid.flush()
+    local s = raid.clients.Hadur.reg:get(id)
+    assert.is_nil(next(s.votes))
+    assert.is_nil(s.proposal)
+  end)
+
+  it("keeps an officer with the wrong password out of council traffic", function()
+    local secrets = keyed(council, "frog-pond-42")
+    secrets.Gally = ns.Wire.secret(ns.Wire.keyFromPassword("typo", 10))
+    local raid, id = setup(secrets)
+    raid.act("Anasazi", "respond", id, "main", "secret note")
+    raid.roll("Anasazi", 41)
+    local s = raid.clients.Gally.reg:get(id)
+    assert.are.equal(0, #s.council) -- a viewer, like a raider
+    assert.are.equal(0, #s.candidates)
+  end)
+
+  it("answers HELLO with WELCOME only for the same password", function()
+    local secrets = keyed({ "Poohtank", "Hadur" }, "frog-pond-42")
+    secrets.Gally = ns.Wire.secret(ns.Wire.keyFromPassword("typo", 10))
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Gally" }, priorities, secrets)
+    local heard = {}
+    for name, c in pairs(raid.clients) do
+      c.reg.ctx.hosting = function() return name == "Poohtank" end
+      c.reg.ctx.notify = function(kind, who) heard[#heard + 1] = name .. ":" .. kind .. ":" .. who end
+    end
+    raid.act("Hadur", "hello")
+    raid.act("Gally", "hello")
+    table.sort(heard)
+    assert.are.same({ "Hadur:welcome:Poohtank", "Poohtank:mismatch:Gally" }, heard)
+  end)
+
+  it("ignores a replayed leader message", function()
+    local raid, id = setup(keyed(council, "frog-pond-42"))
+    raid.roll("Anasazi", 41)
+    raid.roll("Gally", 97)
+    local outs = raid.act("Poohtank", "award", id, "Anasazi", "list")
+    raid.act("Poohtank", "unaward", id)
+    raid.send("Poohtank", { outs[#outs] }) -- the same signed AWARD again
+    raid.flush()
+    assert.is_nil(raid.clients.Hadur.reg:get(id).awardedTo)
   end)
 end)

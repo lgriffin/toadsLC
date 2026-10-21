@@ -13,7 +13,8 @@ function H.load(files, ns)
 end
 
 function H.core()
-  return H.load({ "core/Codec.lua", "core/Priority.lua", "core/Resolver.lua", "core/Session.lua" })
+  return H.load({ "core/Codec.lua", "core/Priority.lua", "core/Resolver.lua", "core/Session.lua",
+                 "core/Crypto.lua", "core/Wire.lua" })
 end
 
 function H.read(path)
