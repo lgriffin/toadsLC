@@ -5,6 +5,7 @@
 --
 -- Simulated sessions go through the same registry as real ones. Their ids start with
 -- "sim-"; they are never saved, exported or posted to group chat, and /tlc sim stop drops them.
+-- It runs solo or in a party, never in a raid group, and never alongside a live session.
 local _, ns = ...
 
 local Sim = {}
@@ -37,7 +38,10 @@ for _, r in ipairs(Sim.RAIDERS) do byName[Priority.nameKey(r.name)] = r end
 
 Sim.random = math.random -- the tests swap in a fixed sequence
 
-local tasks, generation, queue = {}, 0, {}
+local tasks, generation, queue, advanced = {}, 0, {}, {}
+
+Sim.active = false -- between /tlc sim and /tlc sim stop (or a live session opening)
+Sim.MIN_SECONDS, Sim.MAX_SECONDS = 5, 600 -- what other clients accept in a SESSION_OPEN
 
 local function chance(p) return Sim.random() < p end
 local function pick(list) return list[Sim.random(#list)] end
@@ -75,9 +79,12 @@ end
 
 function Sim.isSim(s) return s ~= nil and type(s.id) == "string" and s.id:find("^sim%-") ~= nil end
 
--- who(name) -> { class, spec } for a fake raider, so the leader's roster knows them
+-- who(name) -> { class, spec } for a fake raider, so the leader's roster knows them. Only while
+-- a simulation runs, and never for someone of that name actually in the group.
 function Sim.who(name)
+  if not Sim.active then return nil end
   local r = byName[Priority.nameKey(name)]
+  if r and ns.Roster.unitOf(name) then return nil end
   if r then return { class = r.class, spec = r.spec } end
 end
 
@@ -178,11 +185,13 @@ local function rsp(s, r, response)
   ns.App.send(ns.App.registry:handle(m, r.name, true, false))
 end
 
+-- roll(s, r, max): straight into this session, never the registry's newest open one
 local function roll(s, r, max)
   if s.phase ~= "open" then return end
   local n = Sim.random(max)
   ns.Chat.print(string.format("|cffffff00%s rolls %d (1-%d)|r", r.name, n, max))
-  ns.App.send(ns.App.registry:roll(r.name, n, 1, max))
+  local reg = ns.App.registry
+  ns.App.send(reg:act(s, s:ingestRoll(r.name, n, 1, max, Sim.who(r.name)), "RESPONSE"))
 end
 
 -- How one fake raider answers: listed specs mostly want it for main spec; the rest
@@ -249,12 +258,29 @@ local function openNext()
   for _, r in ipairs(Sim.RAIDERS) do answer(s, r, window) end
 end
 
--- onChange(s, what): the next item opens once this one stops taking responses
+-- The next item opens once this one stops taking responses: once per session, and not
+-- while it is reopened for a re-roll (its next close tries again).
+local function advance(s)
+  if s.phase == "open" or advanced[s.id] then return end
+  advanced[s.id] = true
+  openNext()
+end
+
 function Sim.onChange(s, what)
-  if not Sim.isSim(s) or not s:isLeader(ns.Roster.me()) then return end
+  if not Sim.active or not Sim.isSim(s) or not s:isLeader(ns.Roster.me()) then return end
   if what == "SESSION_CLOSE" then
     after(2, function() officerVote(s) end)
-    after(3, openNext)
+    after(3, function() advance(s) end)
+  elseif what == "REROLL" then
+    -- the tied fake raiders roll again, inside the re-roll window
+    for _, r in ipairs(Sim.RAIDERS) do
+      local key = Priority.nameKey(r.name)
+      if s.restrict and s.restrict[key] then
+        local max = 100
+        for _, c in ipairs(s.candidates) do if Priority.nameKey(c.player) == key and c.max then max = c.max end end
+        after(Sim.random(math.max(1, ns.Session.REROLL_SECONDS - 5)), function() roll(s, r, max) end)
+      end
+    end
   end
 end
 
@@ -262,21 +288,59 @@ end
 -- commands
 ---------------------------------------------------------------------------
 
+-- clear(): cancel what is scheduled, end the simulated sessions for the party too, and
+-- drop them. Returns how many there were.
+local function clear()
+  Sim.active = false
+  generation = generation + 1
+  queue, advanced = {}, {}
+  local App, reg = ns.App, ns.App.registry
+  local kept, dropped = {}, 0
+  Sim.quiet = true -- no "not awarded" line for each one
+  for _, id in ipairs(reg.order) do
+    local s = reg.sessions[id]
+    if Sim.isSim(s) then
+      if s.phase ~= "done" and s:isLeader(ns.Roster.me()) then App.send(reg:award(id, nil, nil)) end
+      reg.sessions[id] = nil
+      dropped = dropped + 1
+    else
+      kept[#kept + 1] = id
+    end
+  end
+  Sim.quiet = false
+  reg.order = kept
+  ns.Frames.hideCandidate()
+  ns.Frames.sessionsChanged()
+  return dropped
+end
+
+local function liveOpen()
+  local me = ns.Roster.me()
+  return ns.App.registry:latest(function(s) return not Sim.isSim(s) and s.phase == "open" and s:isLeader(me) end)
+end
+
 function Sim.start(query, seconds)
   local Chat = ns.Chat
-  local _, instanceType = (IsInInstance or function() end)()
-  if instanceType == "raid" then
-    Chat.print("Not inside a raid instance: a simulation would show fake loot to the whole raid.")
+  if IsInRaid() then
+    Chat.print("Not in a raid group: a simulation would show fake loot to the whole raid. Solo or a party only.")
     return
   end
   if IsInGroup() and not ns.Roster.canLead() then
-    Chat.print("You need group lead or assist to run a simulation in a group.")
+    Chat.print("You need party lead to run a simulation in a party.")
+    return
+  end
+  if liveOpen() then
+    Chat.print("A real loot session is still taking rolls; close or award it first.")
+    return
+  end
+  if seconds and (seconds < Sim.MIN_SECONDS or seconds > Sim.MAX_SECONDS) then
+    Chat.print(string.format("Use %d to %d seconds.", Sim.MIN_SECONDS, Sim.MAX_SECONDS))
     return
   end
   local zone, boss, items = Sim.choose(query)
   if not zone then Chat.print(boss); return end
-  generation = generation + 1
-  queue = {}
+  clear() -- a new run replaces the last one
+  Sim.active = true
   for _, it in ipairs(items) do
     queue[#queue + 1] = { item = it, zone = zone, boss = boss, seconds = seconds or Sim.SECONDS }
   end
@@ -288,20 +352,7 @@ function Sim.start(query, seconds)
 end
 
 function Sim.stop()
-  generation = generation + 1
-  queue = {}
-  local reg, kept, dropped = ns.App.registry, {}, 0
-  for _, id in ipairs(reg.order) do
-    if Sim.isSim(reg.sessions[id]) then
-      reg.sessions[id] = nil
-      dropped = dropped + 1
-    else
-      kept[#kept + 1] = id
-    end
-  end
-  reg.order = kept
-  ns.Frames.hideCandidate()
-  ns.Frames.sessionsChanged()
+  local dropped = clear()
   ns.Chat.print(string.format("[sim] Stopped; cleared %d simulated session%s.", dropped, dropped == 1 and "" or "s"))
 end
 

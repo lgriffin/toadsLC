@@ -43,8 +43,10 @@ frame and run the council frame, `/tlc award`, `/tlc reroll` and `/tlc undo` as 
 - Items on your imported list use its priorities; any other item gets a made-up one over the
   fake raid's specs, so tiers still mean something.
 - Simulated sessions never reach group chat, the export or `/tlc history`, and `/tlc sim stop`
-  clears them. In a party, the others see the council frames over addon messages. It refuses
-  to run inside a raid instance, and in a group it needs lead or assist.
+  clears them (for the party too). In a party, the others see the frames over addon messages and
+  their Main spec / Off-spec buttons roll for real, as they would in a raid. It runs solo or in a
+  party you lead, never in a raid group, and never while a real session is taking rolls; opening
+  a real session stops the simulation. Seconds must be 5 to 600.
 
 ### Rules the resolver applies
 

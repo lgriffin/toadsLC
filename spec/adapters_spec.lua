@@ -208,6 +208,8 @@ describe("/tlc sim", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     reg = W.ns.App.registry
+    _G.IsInRaid = function() return false end -- solo
+    _G.IsInGroup = function() return false end
     local seed = 42 -- a fixed sequence, so every run fakes the same raid
     W.ns.Sim.random = function(n)
       seed = (seed * 16807) % 2147483647
@@ -280,12 +282,50 @@ describe("/tlc sim", function()
     assert.is_truthy(s.priorityVersion)
   end)
 
-  it("stays out of raid instances", function()
-    _G.IsInInstance = function() return true, "raid" end
+  it("stays out of raid groups, live sessions and timers other clients reject", function()
+    _G.IsInRaid = function() return true end
+    _G.IsInGroup = function() return true end
     W.slash("sim")
-    _G.IsInInstance = nil
     assert.are.equal(0, #sims())
-    assert.matches("Not inside a raid instance", W.printed[#W.printed])
+    assert.matches("Not in a raid group", W.printed[#W.printed])
+    _G.IsInRaid = function() return false end
+    _G.IsInGroup = function() return false end
+    W.slash("sim gruul 601")
+    assert.matches("Use 5 to 600 seconds", W.printed[#W.printed])
+    W.slash("session [Dragonspine Trophy]")
+    W.slash("sim gruul")
+    assert.matches("real loot session is still taking rolls", W.printed[#W.printed])
+    assert.are.equal(1, #sims())
+  end)
+
+  it("hands over to a live session, and fakes no one outside a run", function()
+    assert.is_nil(W.ns.Sim.who("Croaksworth"))
+    W.slash("sim gruul 30")
+    assert.is_truthy(W.ns.Sim.who("Croaksworth"))
+    W.tick(2)
+    W.slash("session [Dragonspine Trophy] 30")
+    assert.is_false(W.ns.Sim.active)
+    assert.is_nil(W.ns.Sim.who("Croaksworth"))
+    for _ = 1, 40 do W.tick(1) end
+    local live = sims()
+    assert.are.equal(1, #live)
+    for _, e in ipairs(live[1].candidates) do error("fake answer reached the live session: " .. e.player) end
+  end)
+
+  it("ends the simulated sessions for the party when stopped", function()
+    _G.IsInGroup = function() return true end -- a party: the mock's player leads
+    W.slash("sim gruul 30")
+    W.flushComms()
+    W.addon = {}
+    W.slash("sim stop")
+    W.flushComms()
+    local asm, types = W.ns.Codec.newAssembler(), {}
+    for _, a in ipairs(W.addon) do
+      local m = asm.feed("Poohtank", a.text)
+      if m then types[#types + 1] = m.t end
+    end
+    assert.are.same({ "SESSION_CLOSE", "AWARD" }, types)
+    assert.are.equal(0, #W.chat)
   end)
 end)
 

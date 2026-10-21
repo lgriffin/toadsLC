@@ -14,7 +14,7 @@ local HELP = {
   "/tlc council  show the council frame",
   "/tlc import | /tlc import undo",
   "/tlc export | /tlc export all | /tlc export clear",
-  "/tlc sim [boss | raid | item] [seconds]  practice: fake a boss kill and a raid answering it",
+  "/tlc sim [boss | raid | item] [seconds]  practice solo or in a party: fake a boss kill and a raid answering it",
   "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc status | /tlc history | /tlc tooltip on|off",
 }

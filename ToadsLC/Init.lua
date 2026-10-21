@@ -36,7 +36,11 @@ end
 
 -- announce(s, text, warn): raid chat, except for /tlc sim sessions, which only the player sees
 function App.announce(s, text, warn)
-  if ns.Sim.isSim(s) then Chat.print("[sim] " .. text:gsub("^%[ToadsLC%] ", "")) else Chat.say(text, warn) end
+  if ns.Sim.isSim(s) then
+    if not ns.Sim.quiet then Chat.print("[sim] " .. text:gsub("^%[ToadsLC%] ", "")) end
+  else
+    Chat.say(text, warn)
+  end
 end
 
 local function onChange(s, what)
@@ -109,6 +113,9 @@ function App.open(itemText, seconds, mode)
   if not name then
     Chat.print("Usage: /tlc " .. mode .. " <item link> [seconds]")
     return
+  end
+  if ns.Sim.active then -- real loot wins: no fake raid answering it
+    ns.Sim.stop()
   end
   local pdb = Store.priorities() or {}
   local rules = pdb.rules or {}
