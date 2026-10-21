@@ -29,9 +29,18 @@ local loginTime = 0
 local LIVE_MAX_AGE = 2 * 3600 -- a leader's unfinished session survives a reload this long
 
 local function persist(s)
-  if not s:isLeader(Roster.me()) then return end
+  if not s:isLeader(Roster.me()) or ns.Sim.isSim(s) then return end
   if s.phase ~= "open" then Store.saveSession(s:serialize(), s.openedAt) end
   if s.phase == "done" then Store.clearLive(s.id) else Store.saveLive(s.id, s:stateMsg(App.now()), App.now()) end
+end
+
+-- announce(s, text, warn): raid chat, except for /tlc sim sessions, which only the player sees
+function App.announce(s, text, warn)
+  if ns.Sim.isSim(s) then
+    if not ns.Sim.quiet then Chat.print("[sim] " .. text:gsub("^%[ToadsLC%] ", "")) end
+  else
+    Chat.say(text, warn)
+  end
 end
 
 local function onChange(s, what)
@@ -43,28 +52,30 @@ local function onChange(s, what)
     end
   elseif what == "SESSION_CLOSE" then
     Frames.hideCandidate(s)
-    if s:isLeader(me) and s.mode == "roll" then Chat.say(s:resultLine()) end
+    if s:isLeader(me) and s.mode == "roll" then App.announce(s, s:resultLine()) end
   elseif what == "REROLL" then
     if s:isLeader(me) then
       local names = {}
       for _, e in ipairs(s.candidates) do
         if e.ignored == "rerolled" and s.restrict[Priority.nameKey(e.player)] then names[#names + 1] = e.player end
       end
-      Chat.say(string.format("[ToadsLC] %s: tie, re-roll %s (%d s).", s.itemName, table.concat(names, " and "),
+      App.announce(s, string.format("[ToadsLC] %s: tie, re-roll %s (%d s).", s.itemName, table.concat(names, " and "),
         Session.REROLL_SECONDS), true)
     end
   elseif what == "AWARD" then
-    if s:isLeader(me) then Chat.say(s:awardLine(), true) end
+    if s:isLeader(me) then App.announce(s, s:awardLine(), true) end
   elseif what == "STATE" then
     Frames.sessionsChanged()
   end
   persist(s)
   if what ~= "SESSION_OPEN" then Frames.refresh() end
+  ns.Sim.onChange(s, what)
 end
 
 App.registry = nil
 
 local function send(outs) Comms.send(outs) end
+App.send = send
 
 function App.openSessionFor(itemId)
   if not App.registry then return nil end
@@ -102,6 +113,9 @@ function App.open(itemText, seconds, mode)
   if not name then
     Chat.print("Usage: /tlc " .. mode .. " <item link> [seconds]")
     return
+  end
+  if ns.Sim.active then -- real loot wins: no fake raid answering it
+    ns.Sim.stop()
   end
   local pdb = Store.priorities() or {}
   local rules = pdb.rules or {}
@@ -315,6 +329,7 @@ local function start()
     if s then Chat.print("Picked up your unfinished session for " .. s.itemName .. ".") end
   end
   C_Timer.NewTicker(0.5, function() send(App.registry:tick()) end)
+  ns.Sim.init()
   wasGrouped = IsInGroup()
   if wasGrouped then App.askState() end
   frame:RegisterEvent("CHAT_MSG_SYSTEM")
