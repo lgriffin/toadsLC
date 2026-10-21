@@ -69,7 +69,7 @@ describe("Session", function()
     local raid = newRaid(ns, names, priorities)
     local outs, s = raid.clients.Poohtank.reg:open({
       itemId = 28830, itemName = "Dragonspine Trophy", itemLink = "[Dragonspine Trophy]",
-      zone = "Gruul's Lair", boss = "Gruul", council = council, rules = priorities.rules,
+      zone = "Gruul's Lair", boss = "Gruul the Dragonkiller", council = council, rules = priorities.rules,
       priorityVersion = priorities.exportedAt,
     })
     raid.send("Poohtank", outs)

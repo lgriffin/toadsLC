@@ -58,6 +58,27 @@ everything that touches the WoW API is one file in `ToadsLC/adapters/`.
 | `adapters/Chat.lua`, `Store.lua`, `Commands.lua` | raid chat, `ToadsLCDB` SavedVariables, `/tlc` |
 | `Init.lua` | client check and event wiring |
 
+## Loot tables
+
+`data/tbc-raid-loot.json` lists every Rare-or-better raid drop from Karazhan to Sunwell
+Plateau (1037 items) with `itemId`, `name`, `quality`, `slot`, `itemLevel`, `zone`, `boss` and
+`phase`, in the same field names the priority JSON uses. Tier tokens and quest items carry
+`rewards` (the pieces they buy) and each piece carries `tokens`, so a priority on Helm of the
+Fallen Hero can be shown on Voidheart Crown and back again, the way Gargul links them.
+
+- `python3 tools/resolve_items.py priorities.json` fills `itemId`, `zone`, `boss` and `phase` on a
+  priority list from the item names, and lists names it cannot place. The CSV converter should run
+  its output through this.
+- `python3 tools/build_loot.py` rebuilds the file from the `wow-classic-items` npm package (MIT,
+  scraped from Wowhead) plus the hand-checked fixes in `data/loot/overrides.json`. Edit the
+  overrides, never the generated file; CI fails if the two disagree.
+- Boss names are the in-game encounter names (`Gruul the Dragonkiller`, `Opera Hall`,
+  `Reliquary of Souls`), which is what the addon records from `ENCOUNTER_END`. Trash drops have
+  `boss: "Trash"`.
+- **Gaps:** 133 Sunwell Plateau items (mostly Eredar Twins, M'uru and trash loot, plus the T6
+  bracer/belt/boots tokens and their pieces) have `boss: null` because the scrape does not say who drops them.
+  Zul'Aman's timed-chest rewards are not in the file. Both are fixed by adding entries to the overrides.
+
 The JSON contract lives in `schemas/` (`toads-loot-priority` v1 and `toads-loot-session`
 v1) with the sample documents from the design doc in `fixtures/`.
 
@@ -66,10 +87,11 @@ v1) with the sample documents from the design doc in `fixtures/`.
 ```sh
 luacheck .
 lua5.1 "$(command -v busted)"   # core, plus the whole addon loaded in a fake client (spec/wow_mock.lua)
-python3 tools/contract.py        # fixtures and a real addon export against the JSON Schemas
+python3 tools/contract.py        # fixtures, loot tables and a real addon export against the JSON Schemas
+python3 tools/build_loot.py --check  # loot tables are up to date with data/loot/overrides.json
 ```
 
-CI runs all three on every push (`.github/workflows/test.yml`).
+CI runs all of these on every push (`.github/workflows/test.yml`).
 
 ## Not done yet
 
