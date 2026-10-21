@@ -21,5 +21,5 @@ local wow_read = {
 
 files["ToadsLC/adapters"] = { globals = wow, read_globals = wow_read }
 files["ToadsLC/Init.lua"] = { globals = wow, read_globals = wow_read }
-files["ToadsLC/core"] = { read_globals = { "date", "bit" } }
+files["ToadsLC/core"] = { read_globals = { "date", "time", "bit" } }
 files["spec"] = { std = "+busted", max_line_length = false, globals = { "_G" } }

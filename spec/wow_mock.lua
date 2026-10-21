@@ -1,16 +1,20 @@
 -- A small fake of the WoW client API: enough to load the whole addon from its .toc,
 -- fire events and slash commands, and see what it sends to chat and addon channels.
+--
+-- W.install() / W.load() set up one client in _G, and W.fire, W.slash, ... drive it.
+-- W.client(opts) makes another client in its own global table, so several raid members
+-- can run the addon side by side; W.deliver() carries addon messages between them.
 local H = require("spec.helper")
 
 local M = {}
 
-local function newWidget(kind, name)
+local function newWidget(C, kind, name)
   local w = { kind = kind, name = name, scripts = {}, events = {}, shown = false, text = "", children = {} }
   local methods = {}
   function methods:SetScript(which, fn) self.scripts[which] = fn end
   function methods:GetScript(which) return self.scripts[which] end
   function methods:HookScript(which, fn) self.hooks = self.hooks or {}; self.hooks[which] = fn end
-  function methods:RegisterEvent(e) self.events[e] = true; M.eventFrames[self] = true end
+  function methods:RegisterEvent(e) self.events[e] = true; C.eventFrames[self] = true end
   function methods:UnregisterEvent(e) self.events[e] = nil end
   function methods:Show() self.shown = true end
   function methods:Hide() self.shown = false end
@@ -18,8 +22,8 @@ local function newWidget(kind, name)
   function methods:IsShown() return self.shown end
   function methods:SetText(t) self.text = t end
   function methods:GetText() return self.text end
-  function methods:CreateFontString() return newWidget("FontString") end
-  function methods:CreateTexture() return newWidget("Texture") end
+  function methods:CreateFontString() return newWidget(C, "FontString") end
+  function methods:CreateTexture() return newWidget(C, "Texture") end
   function methods:GetName() return self.name end
   function methods:AddLine(t) self.lines = self.lines or {}; table.insert(self.lines, t) end
   -- any other method is a no-op; plain fields stay nil
@@ -29,56 +33,57 @@ local function newWidget(kind, name)
   end })
 end
 
-function M.install(opts)
+-- setup(C, G, opts): install a fake client into the global table G, its state kept on C
+local function setup(C, G, opts)
   opts = opts or {}
-  M.eventFrames, M.chat, M.addon, M.printed, M.rolls = {}, {}, {}, {}, {}
-  M.time = opts.time or 1792614670
-  M.me = opts.me or "Poohtank"
-  M.group = opts.group or {
+  C.env = G
+  C.eventFrames, C.chat, C.addon, C.printed, C.rolls = {}, {}, {}, {}, {}
+  C.time = opts.time or 1792614670
+  C.me = opts.me or "Poohtank"
+  C.group = opts.group or {
     { name = "Poohtank", class = "PALADIN", leader = true },
     { name = "Anasazi", class = "ROGUE" }, { name = "Gally", class = "WARRIOR" },
     { name = "Hadur", class = "SHAMAN", assist = true },
   }
-  M.timers, M.later = {}, {}
-  local G = _G
+  C.timers, C.later, C.inspects = {}, {}, {}
   G.WOW_PROJECT_ID, G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC = opts.project or 5, 5
   G.RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
   G.RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1 } end })
-  G.UIParent = newWidget("Frame", "UIParent")
-  G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, t) table.insert(M.printed, t) end }
+  G.UIParent = newWidget(C, "Frame", "UIParent")
+  G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, t) table.insert(C.printed, t) end }
   G.UISpecialFrames, G.StaticPopupDialogs, G.SlashCmdList = {}, {}, {}
   G.ACCEPT, G.CANCEL = "Accept", "Cancel"
   G.tinsert = table.insert
-  G.date, G.time = os.date, function() return M.time end
-  G.GameTooltip = newWidget("GameTooltip", "GameTooltip")
-  G.ItemRefTooltip = newWidget("GameTooltip", "ItemRefTooltip")
-  G.CreateFrame = function(kind, name) local w = newWidget(kind, name); if name then G[name] = w end; return w end
-  G.GetServerTime = function() return M.time end
+  G.date, G.time = os.date, function() return C.time end
+  G.GameTooltip = newWidget(C, "GameTooltip", "GameTooltip")
+  G.ItemRefTooltip = newWidget(C, "GameTooltip", "ItemRefTooltip")
+  G.CreateFrame = function(kind, name) local w = newWidget(C, kind, name); if name then G[name] = w end; return w end
+  G.GetServerTime = function() return C.time end
   G.GetAddOnMetadata = function() return "0.1.0" end
   G.C_ChatInfo = {
     RegisterAddonMessagePrefix = function() return true end,
     SendAddonMessage = function(prefix, text, dist, target)
-      table.insert(M.addon, { prefix = prefix, text = text, dist = dist, target = target })
+      table.insert(C.addon, { prefix = prefix, text = text, dist = dist, target = target })
     end,
   }
   G.C_Timer = {
-    NewTicker = function(_, fn) table.insert(M.timers, fn) end,
-    After = function(_, fn) table.insert(M.later, fn) end,
+    NewTicker = function(_, fn) table.insert(C.timers, fn) end,
+    After = function(_, fn) table.insert(C.later, fn) end,
   }
-  G.SendChatMessage = function(text, ch) table.insert(M.chat, { text = text, channel = ch }) end
-  G.RandomRoll = function(a, b) table.insert(M.rolls, { a, b }) end
+  G.SendChatMessage = function(text, ch) table.insert(C.chat, { text = text, channel = ch }) end
+  G.RandomRoll = function(a, b) table.insert(C.rolls, { a, b }) end
   G.IsInRaid = function() return true end
   G.IsInGroup = function() return true end
-  G.GetNumGroupMembers = function() return #M.group end
+  G.GetNumGroupMembers = function() return #C.group end
   G.GetNumSubgroupMembers = function() return 0 end
   local function member(unit)
     if unit == "player" then
-      for _, m in ipairs(M.group) do if m.name == M.me then return m end end
+      for _, m in ipairs(C.group) do if m.name == C.me then return m end end
     end
     local i = tonumber((unit or ""):match("^raid(%d+)$"))
-    return i and M.group[i]
+    return i and C.group[i]
   end
-  G.GetTime = function() return M.time end
+  G.GetTime = function() return C.time end
   G.UnitGUID = function(unit) local m = member(unit); return m and ("Player-" .. m.name) end
   G.UnitName = function(unit) local m = member(unit); return m and m.name end
   G.UnitClass = function(unit) local m = member(unit); return m and m.class, m and m.class end
@@ -86,57 +91,119 @@ function M.install(opts)
   G.UnitIsGroupLeader = function(unit) local m = member(unit); return m and m.leader or false end
   G.UnitIsGroupAssistant = function(unit) local m = member(unit); return m and m.assist or false end
   G.Ambiguate = function(n) return n end
-  G.GetTalentTabInfo = function(i) local m = member("player"); return "tab", "icon", (m.talents or {})[i] or 0 end
+  -- talents: the player's own, or the last NotifyInspect target's when inspect is true
+  G.GetTalentTabInfo = function(i, inspect)
+    local m = inspect and C.inspecting or member("player")
+    return "tab", "icon", ((m and m.talents) or {})[i] or 0
+  end
+  G.NotifyInspect = function(unit) C.inspecting = member(unit); table.insert(C.inspects, unit) end
+  G.ClearInspectPlayer = function() C.inspecting = nil end
   G.GetInstanceInfo = function() return "Gruul's Lair" end
   G.GetRealmName = function() return "Spineshatter" end
   G.GetItemInfo = function(id) return "Item " .. id, "|cffa335ee|Hitem:" .. id .. "::::::::70:::::|h[Item " .. id .. "]|h|r" end
   G.GetItemInfoInstant = function() return nil end
   G.GetItemIcon = function() return "icon" end
   G.InCombatLockdown = function() return false end
-  G.CanInspect = function() return false end
-  G.CheckInteractDistance = function() return false end
+  G.CanInspect = function() return opts.canInspect or false end
+  G.CheckInteractDistance = function() return opts.canInspect or false end
   G.StaticPopup_Show = function() end
   G.ChatFontNormal = {}
   G.ToadsLCDB = opts.db
 end
 
--- load(): run every file listed in ToadsLC.toc, as the client does.
-function M.load()
+-- load(C): run every file listed in ToadsLC.toc, as the client does.
+local function load(C)
   local ns = {}
   for line in H.read("ToadsLC/ToadsLC.toc"):gmatch("[^\r\n]+") do
     if not line:match("^##") and line:match("%S") then
       local path = line:gsub("\\", "/")
-      assert(loadfile(H.root .. "ToadsLC/" .. path))("ToadsLC", ns)
+      local chunk = assert(loadfile(H.root .. "ToadsLC/" .. path))
+      if C.env ~= _G then setfenv(chunk, C.env) end
+      chunk("ToadsLC", ns)
     end
   end
-  M.ns = ns
+  C.ns = ns
   return ns
 end
 
-function M.fire(event, ...)
-  for f in pairs(M.eventFrames) do
+local function fire(C, event, ...)
+  for f in pairs(C.eventFrames) do
     if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
   end
 end
 
-function M.slash(msg) _G.SlashCmdList.TOADSLC(msg) end
+local function slash(C, msg) C.env.SlashCmdList.TOADSLC(msg) end
 
-function M.tick(seconds)
-  M.time = M.time + (seconds or 0)
-  for _, fn in ipairs(M.timers) do fn() end
+local function tick(C, seconds)
+  C.time = C.time + (seconds or 0)
+  for _, fn in ipairs(C.timers) do fn() end
 end
 
 -- flush the throttled addon-message queue
-function M.flushComms()
-  for f in pairs(M.eventFrames) do
+local function flushComms(C)
+  for f in pairs(C.eventFrames) do
     if f.events.CHAT_MSG_ADDON and f.scripts.OnUpdate then for _ = 1, 50 do f.scripts.OnUpdate(f, 1) end end
   end
 end
 
-function M.chatText()
+local function chatText(C)
   local t = {}
-  for _, c in ipairs(M.chat) do t[#t + 1] = c.channel .. ": " .. c.text end
+  for _, c in ipairs(C.chat) do t[#t + 1] = c.channel .. ": " .. c.text end
   return table.concat(t, "\n")
+end
+
+local function printedText(C) return table.concat(C.printed, "\n") end
+
+-- the default client lives in _G and is driven with W.fire(...), W.slash(...), ...
+function M.install(opts) setup(M, _G, opts) end
+function M.load() return load(M) end
+function M.fire(...) return fire(M, ...) end
+function M.slash(msg) return slash(M, msg) end
+function M.tick(seconds) return tick(M, seconds) end
+function M.flushComms() return flushComms(M) end
+function M.chatText() return chatText(M) end
+
+-- client(opts) -> a client in its own global table, already logged in; c:fire(...), c:slash(...), ...
+local Client = { fire = fire, slash = slash, tick = tick, flushComms = flushComms, chatText = chatText,
+                 printedText = printedText }
+Client.__index = Client
+
+function M.client(opts)
+  local c = setmetatable({}, Client)
+  setup(c, setmetatable({}, { __index = _G }), opts)
+  load(c)
+  c:fire("PLAYER_LOGIN")
+  return c
+end
+
+-- deliver(clients): flush each client's addon messages and hand them to the others, as
+-- CHAT_MSG_ADDON on every group member (RAID/PARTY) or the one named (WHISPER). Repeats
+-- until nobody has anything left to say; returns the messages delivered.
+function M.deliver(clients)
+  local delivered = {}
+  for _ = 1, 20 do
+    local outgoing = {}
+    for _, c in ipairs(clients) do
+      c:flushComms()
+      for _, a in ipairs(c.addon) do outgoing[#outgoing + 1] = { from = c, msg = a } end
+      c.addon = {}
+    end
+    if #outgoing == 0 then return delivered end
+    for _, o in ipairs(outgoing) do
+      delivered[#delivered + 1] = o
+      for _, c in ipairs(clients) do
+        if c ~= o.from and (o.msg.dist ~= "WHISPER" or o.msg.target == c.me) then
+          c:fire("CHAT_MSG_ADDON", o.msg.prefix, o.msg.text, o.msg.dist, o.from.me)
+        end
+      end
+    end
+  end
+  error("addon messages kept flowing after 20 rounds")
+end
+
+-- tickAll(clients, seconds): advance every client's clock together
+function M.tickAll(clients, seconds)
+  for _, c in ipairs(clients) do c:tick(seconds) end
 end
 
 return M

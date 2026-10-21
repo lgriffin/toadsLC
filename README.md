@@ -1,141 +1,266 @@
 # Toads LC
 
-A World of Warcraft addon for the Toads raid on Spineshatter EU. It puts the guild's
-agreed class priorities on item tooltips and resolves loot **by priority tier first,
-roll second**, with an RCLootCouncil-style council frame for voting and proposals. Every
-response, roll, vote and award is recorded and exported as JSON for the Toads site.
+Loot council for the Toads raid on Spineshatter EU (TBC Classic).
 
-v1 targets the **TBC Classic** client (Karazhan to Black Temple). It refuses to load on
-any other client. When the WoW Forever API is published, only `ToadsLC/adapters/` is
-ported; the core, the JSON documents and the site stay the same.
+Toads LC puts the guild's agreed class priorities on item tooltips and hands out loot **by
+priority tier first, roll second**. Raiders answer each drop with Main spec, Off-spec or Pass;
+officers see everyone ranked in a council frame and vote; the raid leader awards. Every roll,
+vote and award is kept, and exported after the raid for the Toads site.
+
+This guide is for players and officers. If you want to change the addon itself, see
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+- [Install](#install)
+- [What raiders do](#what-raiders-do)
+- [Raid night for the leader and officers](#raid-night-for-the-leader-and-officers)
+- [The raid password](#the-raid-password)
+- [Practice with /tlc sim](#practice-with-tlc-sim)
+- [How the winner is decided](#how-the-winner-is-decided)
+- [All commands](#all-commands)
+- [Troubleshooting](#troubleshooting)
 
 ## Install
 
-Copy the `ToadsLC/` folder into `World of Warcraft/_classic_/Interface/AddOns/`.
-Gargul can stay installed; both addons add their own tooltip lines.
+1. Download `ToadsLC-<version>.zip` from the
+   [Releases page](https://github.com/lgriffin/toadsLC/releases) (an officer can also give it
+   to you).
+2. Close World of Warcraft, or at least log out to the character screen.
+3. Unzip it into your TBC Classic AddOns folder. On Windows that is usually
+   `C:\Program Files (x86)\World of Warcraft\_anniversary_\Interface\AddOns\`
+   (older installs use `_classic_` instead of `_anniversary_`).
+4. Check the folder looks like this. The `ToadsLC` folder must sit directly in `AddOns`,
+   with `ToadsLC.toc` inside it:
 
-## Raid night
+   ```
+   Interface/
+     AddOns/
+       ToadsLC/
+         ToadsLC.toc
+         Init.lua
+         core/ ...
+         adapters/ ...
+         data/ ...
+   ```
 
-| When | What |
-| --- | --- |
-| Raid password | The raid leader types `/tlc begin <password>` and the officers `/tlc join <password>`; share it in the officer channel, never raid chat. Each joiner is told whether their password matches the leader's, and `/tlc status` shows a fingerprint everyone on the council should see the same. |
-| Before the raid | On the site, export the priorities JSON. In game: `/tlc import`, paste, press Import. `/tlc status` shows the item count and the list's date. |
-| Item drops | Hover it: the **Priority (Toads LC)** block lists each tier in class colour, your own tier marked `>`. |
-| Council loot | `/tlc session [item] [seconds]`. Raiders answer Main spec / Off-spec / Pass with a note, or just `/roll` (main) or `/roll 99` (off-spec). Officers see the council frame ranked by priority, click a row to vote, right-click to propose. The leader awards from the vote leader, the proposal, *list says*, the highest roll, or *Award to…*. |
-| Plain roll | `/tlc roll [item] [seconds]`. The result is announced in one line when it closes; `/tlc award` records it (or `/tlc award <name> <reason>` for an override). |
-| After the raid | `/tlc export`, Ctrl+C, paste into the site's Import session. Once the site accepts it, `/tlc export clear`. |
+5. Start the game. On the character screen, open **AddOns** and make sure **Toads LC** is
+   ticked. In game, `/tlc help` lists the commands.
 
-Other commands: `/tlc end` (forget the raid password), `/tlc close`, `/tlc reroll` (tied rolls, 15 s, tied names only),
-`/tlc undo` (reopen the last award), `/tlc council`, `/tlc history`,
-`/tlc import undo`, `/tlc export all`, `/tlc tooltip on|off`, `/tlc sim` (below).
+Do not use GitHub's green **Code > Download ZIP** button: that zip is the developer source,
+and its folder is named `toadsLC-main`, which the game will not load. Use the release zip.
 
-### Practice outside a raid
+To update, delete the old `ToadsLC` folder and unzip the new one in its place. Your settings,
+imported priorities and unexported loot records are kept (they live in the game's
+SavedVariables, not in the addon folder).
 
-`/tlc sim [boss | raid | item] [seconds]` fakes a boss kill, solo or in a party. It opens a
-council session for each of the boss's drops in turn (two for Karazhan and Zul'Aman bosses,
-three elsewhere, one for trash), taken from the loot tables below. A fake raid of twelve
-answers each one with button responses, notes, `/roll` lines, passes and the odd duplicate
-roll, and a fake officer, Toadmaster, votes once responses close. You answer in the candidate
-frame and run the council frame, `/tlc award`, `/tlc reroll` and `/tlc undo` as on a raid night.
+Toads LC runs alongside Gargul, RCLootCouncil and other loot addons; each adds its own
+tooltip lines. It only loads on the TBC Classic client.
 
-- `/tlc sim` picks a random boss (from the raid you are standing in, if any);
-  `/tlc sim Gruul the Dragonkiller`, `/tlc sim black temple` or `/tlc sim [Dragonspine Trophy] 20`
-  narrow it down. Responses stay open 30 s unless you give the seconds.
-- Items on your imported list use its priorities; any other item gets a made-up one over the
-  fake raid's specs, so tiers still mean something.
-- Simulated sessions never reach group chat, the export or `/tlc history`, and `/tlc sim stop`
-  clears them (for the party too). In a party, the others see the frames over addon messages and
-  their Main spec / Off-spec buttons roll for real, as they would in a raid. It runs solo or in a
-  party you lead, never in a raid group, and never while a real session is taking rolls; opening
-  a real session stops the simulation. Seconds must be 5 to 600.
+## What raiders do
 
-### Rules the resolver applies
+Everyone in the raid should have the addon installed, but only the leader and officers need
+to do anything beyond answering loot.
+
+- **Hover any raid item** to see the **Priority (Toads LC)** block on its tooltip: each
+  priority tier in class colours, with your own tier marked `>`. This works in bags, on the
+  loot window, on chat links and on comparison tooltips. `/tlc tooltip off` hides it.
+- **When the raid leader opens a loot session,** a small window pops up with the item, your
+  tier (or "Your spec is not on the list for this item") and a countdown. Type an optional note
+  for the council, then press:
+  - **Main spec**: rolls 1-100 for you.
+  - **Off-spec (99)**: rolls 1-99 for you.
+  - **Pass**: you are out for this item.
+- **No addon, or you closed the window?** Just `/roll` for main spec or `/roll 99` for
+  off-spec while the countdown runs. The leader's addon reads the roll from chat.
+- **For a plain roll** (`/tlc roll`, used for less contested items) there is no window: the
+  leader announces the item in raid chat, you `/roll` or `/roll 99`, and the result is posted
+  when the timer ends.
+
+Only your first roll counts. Rolls outside 1-100 or 1-99 are ignored.
+
+## Raid night for the leader and officers
+
+### Before the raid
+
+1. On the Toads site, export the priority list (the `toads-loot-priority` JSON).
+2. In game, every officer and the raid leader types `/tlc import`, pastes the JSON into the
+   box (Ctrl+V) and presses **Import**.
+3. `/tlc status` should show the item count and the list's date. If the import was a
+   mistake, `/tlc import undo` puts the previous list back.
+4. Set the raid password (below): the leader types `/tlc begin <password>`, each officer
+   `/tlc join <password>`.
+
+Raiders don't need to import anything; the tooltip only shows on clients that have the list,
+but the loot window works for everyone.
+
+### When something drops
+
+The raid leader (or an assistant) starts the loot, by shift-clicking the item into the command:
+
+- `/tlc session [item] [seconds]` opens a **council session**. Raiders get the loot window;
+  officers get the **council frame**, which lists everyone who answered, ranked by priority
+  tier, then roll, with their spec, roll and note.
+  - **Left-click a row** to vote for that player. **Right-click** it for more: propose them
+    with a reason, set their spec if the addon doesn't know it, or (leader) award to them.
+  - When the countdown ends (or the leader presses **Close responses** / types `/tlc close`),
+    the leader awards with one of the buttons: the **vote leader**, the **proposal**, **list
+    says** (the addon's pick), the **highest roll**, **Award to…** (anyone, with a reason) or
+    **No award**. `/tlc award` does the same as "list says" from chat.
+  - If the top rolls tie, press **Re-roll tied** or type `/tlc reroll`: only the tied players
+    roll again, for 15 seconds.
+  - `/tlc undo` reopens the last award if it went to the wrong person.
+  - `/tlc council` brings the council frame back if you closed it.
+- `/tlc roll [item] [seconds]` is a **plain roll** in raid chat: no council frame, no
+  votes. When it closes, the addon posts the winner in one line; `/tlc award` records it, or
+  `/tlc award <name> <reason>` records an override.
+
+Without `[seconds]`, a session stays open for the time set on the site (normally 30 s) and a
+plain roll for 30 s.
+
+### After the raid
+
+1. The raid leader types `/tlc export`. A window opens with the night's loot as JSON,
+   already selected: press Ctrl+C.
+2. Paste it into **Import session** on the Toads site.
+3. Once the site has accepted it, type `/tlc export clear` so the same sessions are not
+   exported again next week. (`/tlc export all` shows everything ever recorded, exported or
+   not, if you need to send something again.)
+
+`/tlc history` lists tonight's awards at any time.
+
+## The raid password
+
+The password stops anyone outside the council from reading votes and notes, and stops a
+tampered client from voting as an officer. Set it each raid night:
+
+- **Raid leader:** `/tlc begin <password>`. At least 6 characters; spaces are fine.
+- **Officers:** `/tlc join <password>`. You'll be told *"Raid password matches
+  <leader>'s"*, or that it doesn't match, in which case check it and join again.
+- Share it in officer chat or Discord, **never in raid chat**.
+- `/tlc status` shows a **fingerprint**: every officer should see the same one as the leader.
+- It is forgotten after 12 hours, or straight away with `/tlc end`. Only a scrambled key is
+  saved, never the password itself.
+
+Raiders never need the password: they still get the loot window and see the award. An
+officer who forgot to join sees sessions as a viewer only, their votes are ignored, and the
+addon reminds them to `/tlc join`.
+
+## Practice with /tlc sim
+
+`/tlc sim` fakes a boss kill so you can try the whole flow outside a raid, solo or in a
+party you lead. It opens a council session for each of the boss's drops in turn (two for
+Karazhan and Zul'Aman bosses, three elsewhere). A fake raid of twelve answers with buttons,
+notes, `/roll` lines and passes, and a fake officer, Toadmaster, votes once responses close.
+You answer in the loot window and run the council frame, `/tlc award`, `/tlc reroll` and
+`/tlc undo` as on a raid night.
+
+- `/tlc sim` picks a random boss (from the raid you're standing in, if any).
+- `/tlc sim Gruul the Dragonkiller`, `/tlc sim black temple` or
+  `/tlc sim [Dragonspine Trophy] 20` narrow it down; the number is how many seconds
+  responses stay open (5 to 600, default 30).
+- `/tlc sim stop` ends it and clears the simulated sessions, for the party too.
+
+Items on your imported list use its priorities; anything else gets a made-up priority over
+the fake raid. Simulated loot never reaches group chat, the export or `/tlc history`. In a
+party, the others see the windows and their Main spec / Off-spec buttons roll for real. It
+won't run in a raid group or while a real session is taking rolls, and opening a real session
+stops it.
+
+## How the winner is decided
 
 - A main-spec roll (1-100) always beats an off-spec roll (1-99).
-- Among main-spec rolls: lower tier first, then higher roll. A tier 1 rogue rolling 41
+- Among main-spec rolls: **lower tier first, then higher roll.** A tier 1 rogue rolling 41
   beats a tier 2 warrior rolling 97.
-- When every roll is off-spec, the frame offers both the priority pick and the highest
-  roll and awards neither until the council chooses (`rules.allOffspecMode` on the site
-  can switch this to always-priority or always-highest).
+- Among off-spec rolls, or for an item that isn't on the list: highest roll.
+- When every roll is off-spec, the council frame offers both the priority pick and the
+  highest roll and awards neither until the council chooses (the site can switch this to
+  always-priority or always-highest).
 - Duplicate rolls and rolls outside 1-100 / 1-99 are ignored but kept in the record.
-- Awarding anyone other than what the list says is recorded as an override with its reason.
+- Awarding anyone other than what the list says is recorded as an override, with its reason.
 
-## Layout
+## All commands
 
-Everything that decides who wins is in `ToadsLC/core/` and runs under plain Lua 5.1;
-everything that touches the WoW API is one file in `ToadsLC/adapters/`.
+`/toadslc` works anywhere `/tlc` does.
 
-| File | Holds |
-| --- | --- |
-| `core/Codec.lua` | JSON encode/decode, schema checks with field paths, chunked wire format for addon messages |
-| `core/Priority.lua` | spec/role tokens, tier matching (`Rogue:*`, `ROLE:Healer`, `ANY`, named players), sheet wording parser, tooltip labels |
-| `core/Resolver.lua` | main spec, then tier, then roll; ties and all-off-spec flagged |
-| `core/Crypto.lua`, `core/Wire.lua` | SHA-256, HMAC, PBKDF2, base64; signing and encrypting addon messages with the raid password |
-| `core/Session.lua` | session state machine and the message registry (open, responses, votes, proposals, close, re-roll, award, late-join state) |
-| `adapters/Tooltip.lua` | Priority block on GameTooltip, ItemRefTooltip and comparison tooltips |
-| `adapters/RollParser.lua` | roll lines from `CHAT_MSG_SYSTEM`, built from the client's own `RANDOM_ROLL_RESULT` |
-| `adapters/CouncilComms.lua` | `ToadsLC` addon-message prefix, throttled send queue, chunk reassembly |
-| `adapters/Frames.lua` | candidate, council and import/export frames |
-| `adapters/Roster.lua` | class and spec (talents, inspect, imported `members[]`), council membership |
-| `adapters/Sim.lua`, `data/RaidLoot.lua` | `/tlc sim`'s fake kill and raid; boss drop lists generated by `tools/build_loot.py` |
-| `adapters/Chat.lua`, `Store.lua`, `Commands.lua` | raid chat, `ToadsLCDB` SavedVariables, `/tlc` |
-| `Init.lua` | client check and event wiring |
+| Command | Who | What it does |
+| --- | --- | --- |
+| `/tlc help` | anyone | list the commands |
+| `/tlc status` | anyone | imported list and its date, sessions waiting for export, raid password fingerprint |
+| `/tlc tooltip on` / `off` | anyone | show or hide the Priority block on tooltips |
+| `/tlc import` | officers | paste the priority list from the site |
+| `/tlc import undo` | officers | go back to the previous list |
+| `/tlc begin <password>` | raid leader | set tonight's raid password and lead the council |
+| `/tlc join <password>` | officers | join the council with the leader's password |
+| `/tlc end` | leader, officers | forget the raid password |
+| `/tlc session <item> [seconds]` | leader or assist | open a council session for an item |
+| `/tlc roll <item> [seconds]` | leader or assist | plain priority roll in raid chat |
+| `/tlc close` | leader | close responses on the last session early |
+| `/tlc award` | leader | award the last session to who the list says |
+| `/tlc award <name> [reason]` | leader | award to someone else, recorded as an override |
+| `/tlc reroll` | leader | re-roll the tied players only (15 s) |
+| `/tlc undo` | leader | reopen the last award |
+| `/tlc council` | officers | show the council frame again |
+| `/tlc history` | anyone | tonight's awards |
+| `/tlc export` | leader | the night's loot as JSON for the site |
+| `/tlc export all` | leader | every recorded session, exported or not |
+| `/tlc export clear` | leader | mark the exported sessions as sent |
+| `/tlc sim [boss \| raid \| item] [seconds]` | anyone, solo or party lead | practice with a fake boss kill |
+| `/tlc sim stop` | anyone | end the practice |
 
-## Loot tables
+## Troubleshooting
 
-`data/tbc-raid-loot.json` lists every Rare-or-better raid drop from Karazhan to Sunwell
-Plateau (1037 items) with `itemId`, `name`, `quality`, `slot`, `itemLevel`, `zone`, `boss` and
-`phase`, in the same field names the priority JSON uses. Tier tokens and quest items carry
-`rewards` (the pieces they buy) and each piece carries `tokens`, so a priority on Helm of the
-Fallen Hero can be shown on Voidheart Crown and back again, the way Gargul links them.
+**Toads LC isn't in the AddOns list, or `/tlc` does nothing.**
+The folder is in the wrong place or has the wrong name. It must be
+`Interface/AddOns/ToadsLC/ToadsLC.toc`, not `AddOns/ToadsLC/ToadsLC/...` (unzipped twice) and
+not `AddOns/toadsLC-main/...` (the source download). Fix the folder and restart the game.
 
-- `python3 tools/resolve_items.py priorities.json` fills `itemId`, `zone`, `boss` and `phase` on a
-  priority list from the item names, and lists names it cannot place. The CSV converter should run
-  its output through this.
-- `python3 tools/build_loot.py` rebuilds the file (and `ToadsLC/data/RaidLoot.lua`, the copy `/tlc sim` reads) from the `wow-classic-items` npm package (MIT,
-  scraped from Wowhead) plus the hand-checked fixes in `data/loot/overrides.json`. Edit the
-  overrides, never the generated file; CI fails if the two disagree.
-- Boss names are the in-game encounter names (`Gruul the Dragonkiller`, `Opera Hall`,
-  `Reliquary of Souls`), which is what the addon records from `ENCOUNTER_END`. Trash drops have
-  `boss: "Trash"`.
-- **Gaps:** 133 Sunwell Plateau items (mostly Eredar Twins, M'uru and trash loot, plus the T6
-  bracer/belt/boots tokens and their pieces) have `boss: null` because the scrape does not say who drops them.
-  Zul'Aman's timed-chest rewards are not in the file. Both are fixed by adding entries to the overrides.
+**It's listed as "Out of date" and won't load.**
+Tick **Load out of date AddOns** on the AddOns screen, and tell an officer: the addon needs
+the new client version number added. You can find it with `/dump select(4, GetBuildInfo())`.
 
-The JSON contract lives in `schemas/` (`toads-loot-priority` v1 and `toads-loot-session`
-v1) with the sample documents from the design doc in `fixtures/`.
+**"This version runs on the TBC Classic client only".**
+You're on a different game client (Era, Wrath or retail). Toads LC v1 is TBC only.
 
-## Tests
+**The tooltip shows no priorities.**
+Only clients that imported the list show it: `/tlc status` says whether you have one. Also
+check `/tlc tooltip on`. Items not on the list have no Priority block.
 
-```sh
-luacheck .
-lua5.1 "$(command -v busted)"   # core, plus the whole addon loaded in a fake client (spec/wow_mock.lua)
-python3 tools/contract.py        # fixtures, loot tables and a real addon export against the JSON Schemas
-python3 tools/build_loot.py --check  # loot tables are up to date with data/loot/overrides.json
-```
+**"Import failed: ..."**
+The message names the field that's wrong, for example
+`items[0].priority[1][0].spec "Shamans" is not a known token`. Fix it on the site and export
+again. Your previous list is kept until an import succeeds. Make sure you copied the whole
+JSON, from the first `{` to the last `}`.
 
-CI runs all of these on every push (`.github/workflows/test.yml`).
+**No loot window popped up.**
+Check the addon is enabled, and that you didn't close it: you can still `/roll` or `/roll 99`
+before the countdown ends. If you joined the raid or reloaded mid-session, the addon asks the
+leader for the open session within about 20 seconds.
 
-## Not done yet
+**"You need raid lead or assist to start a session."**
+Only the raid leader and assistants can open sessions and rolls.
 
-- **Golden priority list.** The CSV converter and the first `toads-loot-priority.json`
-  built from the 172-item sheet are not in this repo yet; add the file to `fixtures/` and
-  it becomes the golden sample for both repos.
-- **Interface number.** The `.toc` uses `20505`; check it against the live TBC Classic
-  client (`/dump select(4, GetBuildInfo())`) before the first raid.
-- **In-game checklist.** Everything above runs in tests against a fake client; it still
-  needs the two-person Karazhan run from the design doc (loot frame, bag, chat-link and
-  comparison tooltips, roll timing, export select-all).
-- **Without a raid password**, council traffic is plain JSON on the RAID addon channel:
-  anyone reading raw addon traffic can see votes and notes, and a modified client could
-  send messages that look like an officer's. Use `/tlc begin` / `/tlc join` on raid nights.
-  With a password, every message is signed (HMAC-SHA-256 with a PBKDF2 key; only the key
-  is stored, for 12 hours or until `/tlc end`), and responses, notes, votes, proposals and
-  state are encrypted. Raiders without it still see the open, close and award, but cannot
-  verify them, so a forged public message could at worst show a raider a fake loot frame.
-  An officer who skipped `/tlc join` sees sessions as a viewer and is told to join; once
-  they do, the leader sends them the current state.
-- **Druid ferals.** Talents cannot tell bear from cat, so an uninspected feral is matched
-  on `Druid:*` until the site's `members[]` names the spec or the LC sets it from the frame.
-- Open questions from the design doc (token set, bare "Priest", tier tokens, who may start
-  a roll, multi-item tabs) are unchanged; the code follows the doc's current assumptions.
+**Officer: the council frame is empty, or "uses a raid password, type /tlc join".**
+You haven't joined with tonight's password. `/tlc join <password>`; once it matches, the
+leader sends you the open sessions.
+
+**"Your raid password doesn't match", or fingerprints differ in `/tlc status`.**
+Someone typed it differently (it is case-sensitive, spaces count). Agree on it in officer chat,
+then `/tlc join` again. The leader can `/tlc begin` again to change it for everyone.
+
+**Officer votes don't count.**
+The leader sees *"<name> is on the council but hasn't joined with the raid password"*. That
+officer needs to `/tlc join`. The council is the list on the site; without one, it is the raid
+leader and assistants.
+
+**A raider's spec shows as just the class (or a druid shows as Druid).**
+The addon reads specs from talents when it can inspect the player, or from the member list on
+the site. Feral druids can't be told apart by talents, so add their spec on the site.
+
+**The leader disconnected or reloaded mid-session.**
+The leader's addon picks up its unfinished session for up to two hours after a reload, and
+says so in chat; the leader can then carry on with `/tlc close` and `/tlc award`.
+
+**`/tlc sim` says "Not in a raid group".**
+Simulations only run solo or in a party you lead, so fake loot never reaches a real raid.
+Leave the raid group, or practise on an alt.
+
+Still stuck? Type `/tlc status`, take a screenshot and post it in the officer channel.

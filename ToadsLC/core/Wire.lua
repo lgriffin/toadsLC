@@ -72,7 +72,7 @@ function Wire.seal(msg, sender, secret, clock)
   local body = Codec.encode(msg)
   if not secret then return body end
   local who = Priority.nameKey(sender)
-  local nonce = newNonce(clock or os.time)
+  local nonce = newNonce(clock or (os and os.time) or time) -- the client has time(), not os
   local kind = "p"
   if Wire.PRIVATE[msg.t] then
     kind = "e"
@@ -96,7 +96,9 @@ function Wire.open(text, sender, secret)
   local who = Priority.nameKey(sender)
   local valid = secret ~= nil and Crypto.equal(tag, mac(secret, who, kind, nonce, body))
   if kind == "e" then
-    if not valid then return nil, "sealed for another password" end
+    -- a raider with no password sees the council's sealed traffic on RAID all night: only a
+    -- client holding a different password has something to report
+    if not valid then return nil, secret and "sealed for another password" or "sealed for the council" end
     local cipher = Crypto.unbase64(body)
     if not cipher then return nil, "bad ciphertext" end
     body = Crypto.xor(cipher, keystream(secret, who, nonce, #cipher))
