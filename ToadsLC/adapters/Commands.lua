@@ -14,6 +14,8 @@ local HELP = {
   "/tlc council  show the council frame",
   "/tlc import | /tlc import undo",
   "/tlc export | /tlc export all | /tlc export clear",
+  "/tlc sim [boss | raid | item] [seconds]  practice: fake a boss kill and a raid answering it",
+  "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc status | /tlc history | /tlc tooltip on|off",
 }
 
@@ -61,6 +63,13 @@ end
 function handlers.export(rest)
   rest = rest:lower()
   if rest == "clear" then ns.App.exportClear() else ns.App.export(rest == "all") end
+end
+
+function handlers.sim(rest)
+  if rest:lower() == "stop" then ns.Sim.stop(); return end
+  local query, seconds = itemAndSeconds(rest)
+  if tonumber(query) and tonumber(query) < 1000 then query, seconds = "", tonumber(query) end -- "/tlc sim 20"
+  ns.Sim.start(query, seconds)
 end
 
 function handlers.status() ns.App.status() end

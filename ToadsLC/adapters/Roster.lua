@@ -92,6 +92,8 @@ end
 
 -- who(name) -> { class, spec } (spec nil when unknown)
 function Roster.who(name)
+  local fake = ns.Sim and ns.Sim.who(name) -- /tlc sim's raiders
+  if fake then return fake end
   local unit = Roster.unitOf(name)
   local class = unit and Roster.classOf(unit)
   local spec

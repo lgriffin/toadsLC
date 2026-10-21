@@ -12,7 +12,7 @@ local wow_read = {
   "Ambiguate", "C_AddOns", "C_ChatInfo", "C_Timer", "CanInspect", "CheckInteractDistance", "ClearInspectPlayer",
   "CreateFrame", "DEFAULT_CHAT_FRAME", "EasyMenu", "Enum", "GameTooltip", "GetAddOnMetadata", "GetInstanceInfo",
   "GetItemIcon", "GetItemInfo", "GetItemInfoInstant", "GetNumGroupMembers", "GetNumSubgroupMembers",
-  "GetRealmName", "GetServerTime", "GetTalentTabInfo", "InCombatLockdown", "IsInGroup", "IsInRaid", "MenuUtil",
+  "GetRealmName", "GetServerTime", "GetTalentTabInfo", "InCombatLockdown", "IsInGroup", "IsInInstance", "IsInRaid", "MenuUtil",
   "NotifyInspect", "RAID_CLASS_COLORS", "RANDOM_ROLL_RESULT", "RandomRoll", "RegisterAddonMessagePrefix",
   "SendAddonMessage", "SendChatMessage", "StaticPopup_Show", "TooltipDataProcessor", "UIParent", "UnitClass",
   "UnitIsGroupAssistant", "UnitGUID", "GetTime", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",

@@ -201,6 +201,94 @@ describe("addon in a fake client", function()
   end)
 end)
 
+describe("/tlc sim", function()
+  local reg
+  before_each(function()
+    W.install()
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    reg = W.ns.App.registry
+    local seed = 42 -- a fixed sequence, so every run fakes the same raid
+    W.ns.Sim.random = function(n)
+      seed = (seed * 16807) % 2147483647
+      local x = seed / 2147483647
+      return n and (math.floor(x * n) + 1) or x
+    end
+  end)
+
+  local function sims()
+    local out = {}
+    for _, id in ipairs(reg.order) do out[#out + 1] = reg.sessions[id] end
+    return out
+  end
+
+  it("chooses a boss's drops, or one item, from the loot tables", function()
+    local zone, boss, items = W.ns.Sim.choose("gruul the dragonkiller")
+    assert.are.equal("Gruul's Lair", zone)
+    assert.are.equal("Gruul the Dragonkiller", boss)
+    assert.are.equal(3, #items)
+    local itemZone, _, one = W.ns.Sim.choose("|cffa335ee|Hitem:28830::::::::70:::::|h[Dragonspine Trophy]|h|r")
+    assert.are.equal("Gruul's Lair", itemZone)
+    assert.are.same({ 28830 }, { one[1][1] })
+    zone, boss, items = W.ns.Sim.choose("karazhan")
+    assert.are.equal("Karazhan", zone)
+    assert.are.equal(2, #items)
+    assert.is_not.equal("Trash", boss)
+    local none, err = W.ns.Sim.choose("Onyxia")
+    assert.is_nil(none)
+    assert.matches("No boss, raid or item", err)
+  end)
+
+  it("runs a fake kill through responses, rolls, the officer's vote and the next item", function()
+    W.slash("sim Gruul the Dragonkiller 20")
+    assert.matches("%[sim%] Gruul the Dragonkiller killed", table.concat(W.printed, "\n"))
+    local first = sims()[1]
+    assert.are.equal(1, #sims())
+    assert.matches("^sim%-", first.id)
+    assert.are.equal("Gruul the Dragonkiller", first.boss)
+    assert.is_truthy(first.item and first.item.priority) -- no list imported: a made-up priority
+    assert.is_true(first:isCouncil("Toadmaster"))
+    assert.is_true(_G.ToadsLCCandidateFrame:IsShown())
+    for _ = 1, 20 do W.tick(1) end
+    assert.are.equal("voting", first.phase)
+    assert.is_true(#first.candidates > 0)
+    local rolled = false
+    for _, e in ipairs(first.candidates) do
+      assert.is_truthy(W.ns.Sim.who(e.player)) -- every candidate is a fake raider with a class and spec
+      assert.is_truthy(e.class)
+      if e.roll then rolled = true end
+    end
+    assert.is_true(rolled)
+    for _ = 1, 3 do W.tick(1) end
+    assert.is_truthy(first.votes.toadmaster)
+    assert.are.equal(2, #sims()) -- the second drop opened once the first closed
+    W.slash("award Croaksworth testing")
+    assert.are.equal(0, #W.chat) -- nothing reaches group chat
+    assert.are.same({}, _G.ToadsLCDB.sessions) -- nor the export
+    W.slash("sim stop")
+    assert.are.equal(0, #sims())
+    for _ = 1, 60 do W.tick(1) end
+    assert.are.equal(0, #sims()) -- the stopped simulation opens nothing more
+  end)
+
+  it("ranks the fake raid by the imported list when the item is on it", function()
+    W.ns.App.import(H.read("fixtures/priority.sample.json"))
+    W.slash("sim Dragonspine Trophy 20")
+    local s = sims()[1]
+    assert.are.equal(28830, s.itemId)
+    assert.is_nil(s.item.sim)
+    assert.is_truthy(s.priorityVersion)
+  end)
+
+  it("stays out of raid instances", function()
+    _G.IsInInstance = function() return true, "raid" end
+    W.slash("sim")
+    _G.IsInInstance = nil
+    assert.are.equal(0, #sims())
+    assert.matches("Not inside a raid instance", W.printed[#W.printed])
+  end)
+end)
+
 describe("Chat", function()
   it("splits long announcements under the chat limit on spaces", function()
     W.install()

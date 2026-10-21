@@ -10,6 +10,8 @@ core\Priority.lua
 core\Resolver.lua
 core\Session.lua
 
+data\RaidLoot.lua
+
 adapters\Store.lua
 adapters\Roster.lua
 adapters\RollParser.lua
@@ -17,6 +19,7 @@ adapters\Chat.lua
 adapters\CouncilComms.lua
 adapters\Tooltip.lua
 adapters\Frames.lua
+adapters\Sim.lua
 adapters\Commands.lua
 
 Init.lua
