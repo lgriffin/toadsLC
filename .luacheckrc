@@ -15,7 +15,7 @@ local wow_read = {
   "GetRealmName", "GetServerTime", "GetTalentTabInfo", "InCombatLockdown", "IsInGroup", "IsInRaid", "MenuUtil",
   "NotifyInspect", "RAID_CLASS_COLORS", "RANDOM_ROLL_RESULT", "RandomRoll", "RegisterAddonMessagePrefix",
   "SendAddonMessage", "SendChatMessage", "StaticPopup_Show", "TooltipDataProcessor", "UIParent", "UnitClass",
-  "UnitIsGroupAssistant", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
+  "UnitIsGroupAssistant", "UnitGUID", "GetTime", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
   "WOW_PROJECT_ID", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
 }
 

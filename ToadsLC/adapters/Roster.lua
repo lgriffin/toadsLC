@@ -146,17 +146,20 @@ frame:SetScript("OnUpdate", function(_, dt)
   elapsed = elapsed + dt
   if elapsed < 2 or #queue == 0 or InCombatLockdown() then return end
   elapsed = 0
+  if pending and GetTime() - pending.at > 10 then pending = nil end -- no answer: give up on it
+  if pending then return end
   local name = table.remove(queue, 1)
   local unit = Roster.unitOf(name)
   if unit and CanInspect(unit) and CheckInteractDistance(unit, 1) then
-    pending = { name = name, unit = unit, class = Roster.classOf(unit) }
+    pending = { name = name, unit = unit, class = Roster.classOf(unit), guid = UnitGUID(unit), at = GetTime() }
     NotifyInspect(unit)
   end
 end)
 
 frame:RegisterEvent("INSPECT_READY")
-frame:SetScript("OnEvent", function()
-  if not pending then return end
+frame:SetScript("OnEvent", function(_, _, guid)
+  -- only our own request: anything else (the Inspect frame, another addon) is someone else's talents
+  if not pending or guid ~= pending.guid then return end
   local spec = specFromTalents(pending.class, true)
   if spec then inspected[Priority.nameKey(pending.name)] = spec end
   pending = nil

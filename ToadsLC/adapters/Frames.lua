@@ -282,6 +282,16 @@ local function buildCouncil()
     council.rows[i] = row
   end
 
+  -- more candidates than rows: the mouse wheel scrolls the list
+  council.offset = 0
+  council.more = council:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  council.more:SetPoint("TOPRIGHT", -16, -58)
+  council:EnableMouseWheel(true)
+  council:SetScript("OnMouseWheel", function(self, delta)
+    self.offset = math.max(0, math.min((self.total or 0) - ROWS, self.offset - delta * 3))
+    Frames.refresh()
+  end)
+
   council.footer = council:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   council.footer:SetPoint("BOTTOMLEFT", 16, 66)
   council.footer:SetPoint("RIGHT", -16, 0)
@@ -410,8 +420,16 @@ function Frames.refresh()
   end
 
   local myVote = s.votes[Priority.nameKey(me)]
+  council.total = #rows
+  council.offset = math.max(0, math.min(council.offset, #rows - ROWS))
+  if #rows > ROWS then
+    council.more:SetText(string.format("%d-%d of %d (scroll)", council.offset + 1,
+      math.min(#rows, council.offset + ROWS), #rows))
+  else
+    council.more:SetText("")
+  end
   for i, row in ipairs(council.rows) do
-    local e = rows[i]
+    local e = rows[i + council.offset]
     row.entry = e
     if not e then
       row:Hide()

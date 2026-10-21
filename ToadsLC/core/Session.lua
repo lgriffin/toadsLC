@@ -139,6 +139,8 @@ function Session:awardOptions()
   if r.allOffspec and self.rules.allOffspecMode == "ask" then
     opts.listPriority = r.ranked[1] and r.ranked[1].player
     opts.listRoll = r.highestRoll and r.highestRoll.player
+  elseif r.tie then
+    opts.tied = r.tied -- the list cannot pick: re-roll, or award by name
   else
     opts.list = self.computedWinner or (r.winner and r.winner.player)
   end
@@ -227,6 +229,7 @@ function Apply.AWARD(s, m, sender)
   s.awardedBy = sender
   s.awardedVia = m.via
   s.override = m.ov
+  s.preAward = { cw = s.computedWinner, cb = s.computedBy }
   if m.cw ~= nil then s.computedWinner, s.computedBy = m.cw, m.cb end
   s.phase = "done"
   return true
@@ -235,6 +238,7 @@ end
 function Apply.UNAWARD(s, _, sender)
   if not s:isLeader(sender) or s.phase ~= "done" then return false end
   s.awardedTo, s.awardedBy, s.awardedVia, s.override = nil, nil, nil, nil
+  if s.preAward then s.computedWinner, s.computedBy, s.preAward = s.preAward.cw, s.preAward.cb, nil end
   s.phase = "voting"
   return true
 end
@@ -243,7 +247,9 @@ end
 function Session:apply(m, sender)
   local fn = Apply[m.t]
   if not fn then return false end
-  return fn(self, m, sender)
+  local changed = fn(self, m, sender)
+  if m.v and self:isLeader(sender) and m.v > (self.version or 0) then self.version = m.v end
+  return changed
 end
 
 ---------------------------------------------------------------------------
@@ -292,7 +298,11 @@ function Session:ingestResponse(player, rsp, who)
   local key = nameKey(player)
   if self.restrict and not self.restrict[key] then return nil end
   who = who or {}
-  local class, spec = rsp.c or who.class, rsp.sp or who.spec
+  -- The leader's roster (class from the client, spec from inspect or members[]) wins over
+  -- what the raider's addon claims; a claimed spec is only taken when it fits the class.
+  local class = who.class or rsp.c
+  local spec = who.spec
+  if not spec and rsp.sp and Priority.isSpec(rsp.sp) and rsp.sp:match("^(%a+):") == class then spec = rsp.sp end
   if rsp.r == "pass" then
     if self.live[key] then return nil end
     return { t = "RESPONSE", s = self.id, p = player, r = "pass" }
@@ -327,7 +337,7 @@ function Session:closeMsg(now)
   if r.allOffspec and self.rules.allOffspecMode == "ask" then
     m.cw = r.ranked[1] and r.ranked[1].player
     m.hr = r.highestRoll and r.highestRoll.player
-  else
+  elseif not r.tie then
     m.cw = r.winner and r.winner.player
   end
   if self.restrict then m.final = true end
@@ -434,7 +444,7 @@ function Session:stateMsg(now)
                  ro = e.roll, mx = e.max, ig = e.ignored }
   end
   return {
-    t = "STATE", s = self.id,
+    t = "STATE", s = self.id, v = self.version or 0,
     o = { itemId = self.itemId, itemName = self.itemName, itemLink = self.itemLink, zone = self.zone,
           boss = self.boss, leader = self.leader, council = self.council, rules = self.rules,
           mode = self.mode, priorityVersion = self.priorityVersion },
@@ -453,6 +463,7 @@ function Session.fromState(m, item, now)
                           council = o.council, rules = o.rules, mode = o.mode,
                           priorityVersion = un(o.priorityVersion), now = m.oa, seconds = 0 })
   s.closesAt = now + (m.left or 0)
+  s.version = m.v or 0
   s.closedAt = un(m.ca)
   s.phase = m.ph
   for i, c in ipairs(m.cands or {}) do
@@ -596,6 +607,7 @@ end
 -- Apply locally (as me) and broadcast.
 function Registry:act(s, msg, what)
   if not msg then return {} end
+  if s:isLeader(self.ctx.me) then msg.v = (s.version or 0) + 1 end
   if s:apply(msg, self.ctx.me) then self:changed(s, what or msg.t) end
   return out({}, msg)
 end
@@ -694,18 +706,135 @@ function Registry:requestState()
   return out({}, { t = "STATE_REQUEST" })
 end
 
+---------------------------------------------------------------------------
+-- incoming message checks: anything from another client is untrusted, so every field a
+-- handler reads is type-checked first and a malformed message is dropped, never thrown on.
+---------------------------------------------------------------------------
+
+local MAX_TEXT = 255
+
+local function isInt(v) return type(v) == "number" and v == math.floor(v) and v > -1e12 and v < 1e12 end
+
+local KINDS = {
+  str = function(v) return type(v) == "string" and #v <= MAX_TEXT end,
+  int = isInt,
+  num = function(v) return type(v) == "number" and v == v and v > -1e12 and v < 1e12 end,
+  bool = function(v) return type(v) == "boolean" end,
+  names = function(v)
+    if type(v) ~= "table" or #v > 40 then return false end
+    for _, n in ipairs(v) do if type(n) ~= "string" or #n > MAX_TEXT then return false end end
+    return true
+  end,
+  tbl = function(v) return type(v) == "table" end,
+}
+
+-- field -> kind; a trailing "?" makes it optional (absent or null)
+local FIELDS = {
+  SESSION_OPEN = { s = "str", it = "int?", nm = "str", lk = "str?", z = "str?", b = "str?", co = "names",
+                   sec = "int", oa = "int?", md = "str?", pv = "str?", ru = "tbl?", v = "int?" },
+  RSP = { s = "str", r = "str", n = "str?", c = "str?", sp = "str?" },
+  RESPONSE = { s = "str", k = "int?", p = "str", c = "str?", sp = "str?", r = "str", n = "str?", ro = "int?",
+               mx = "int?", ig = "str?", v = "int?" },
+  VOTE = { s = "str", p = "str?", v = "int?" },
+  PROPOSE = { s = "str", p = "str?", re = "str?", v = "int?" },
+  SESSION_CLOSE = { s = "str", at = "int", cw = "str?", cb = "str", hr = "str?", final = "bool?", v = "int?" },
+  REROLL = { s = "str", at = "int", names = "names", sec = "int?", v = "int?" },
+  AWARD = { s = "str", p = "str?", via = "str?", ov = "tbl?", cw = "str?", cb = "str?", v = "int?" },
+  UNAWARD = { s = "str", v = "int?" },
+  STATE_REQUEST = {},
+  STATE = { s = "str", v = "int?", o = "tbl", oa = "int", left = "num?", ca = "int?", ph = "str",
+            cands = "tbl?", passed = "names?", votes = "tbl?", prop = "tbl?", restrict = "names?",
+            cw = "str?", cb = "str?", hr = "str?", aw = "tbl?" },
+}
+
+local ONE_OF = {
+  r = { main = true, offspec = true, pass = true },
+  ph = { open = true, voting = true, done = true },
+  cb = { priority = true, ["highest-roll"] = true, none = true },
+  via = { votes = true, proposal = true, list = true, ["highest-roll"] = true, manual = true },
+  md = { session = true, roll = true },
+}
+
+local function checkFields(m, fields)
+  for k in pairs(m) do
+    if k ~= "t" and not fields[k] then return false end
+    if m[k] == Codec.null then m[k] = nil end
+  end
+  for k, kind in pairs(fields) do
+    local v = m[k]
+    local opt = kind:sub(-1) == "?"
+    if opt then kind = kind:sub(1, -2) end
+    if v == nil then
+      if not opt then return false end
+    elseif not KINDS[kind](v) or (ONE_OF[k] and not ONE_OF[k][v]) then
+      return false
+    end
+  end
+  return true
+end
+
+local function checkState(m)
+  local o = m.o
+  if not checkFields(o, { itemId = "int?", itemName = "str", itemLink = "str?", zone = "str?", boss = "str?",
+                          leader = "str", council = "names", rules = "tbl?", mode = "str?",
+                          priorityVersion = "str?" }) then return false end
+  if #(m.cands or {}) > 200 then return false end
+  for _, c in ipairs(m.cands or {}) do
+    if type(c) ~= "table" or not checkFields(c, { p = "str", c = "str?", sp = "str?", r = "str", n = "str?",
+                                                  ro = "int?", mx = "int?", ig = "str?" }) then
+      return false
+    end
+  end
+  for _, v in ipairs(m.votes or {}) do
+    if type(v) ~= "table" or type(v[1]) ~= "string" or type(v[2]) ~= "string" then return false end
+  end
+  if m.prop and not checkFields(m.prop, { by = "str", player = "str", reason = "str?" }) then return false end
+  if m.aw and not checkFields(m.aw, { p = "str?", by = "str?", via = "str?", ov = "tbl?" }) then return false end
+  return true
+end
+
+local function checkRules(r)
+  if r == nil then return true end
+  return checkFields(r, { offspecRollMax = "int?", allOffspecMode = "str?", sessionSeconds = "int?",
+                          votesVisibleTo = "str?" })
+end
+
+local function checkOverride(ov)
+  return ov == nil or checkFields(ov, { by = "str", reason = "str?" })
+end
+
+-- valid(m) -> true when the message is well-formed for its type.
+function Session.valid(m)
+  if type(m) ~= "table" or type(m.t) ~= "string" then return false end
+  local fields = FIELDS[m.t]
+  if not fields or not checkFields(m, fields) then return false end
+  if m.t == "SESSION_OPEN" then
+    return m.sec > 0 and m.sec <= 600 and checkRules(m.ru)
+  elseif m.t == "RESPONSE" then
+    return m.k == nil or m.k >= 1
+  elseif m.t == "AWARD" then
+    return checkOverride(m.ov)
+  elseif m.t == "STATE" then
+    return checkState(m) and checkRules(m.o.rules) and (m.aw == nil or checkOverride(m.aw.ov))
+  end
+  return true
+end
+
+Registry.STATE_RETRY = 10 -- seconds between snapshot requests for a session we have not seen
+
 -- handle(msg, sender): an addon message from another client.
 function Registry:handle(m, sender)
   local me = self.ctx.me
-  if type(m) ~= "table" or type(m.t) ~= "string" then return {} end
+  if not Session.valid(m) then return {} end
 
   if m.t == "SESSION_OPEN" then
     if self.sessions[m.s] then return {} end
-    local s = Session.new({ id = m.s, itemId = un(m.it), itemName = m.nm, itemLink = m.lk, zone = m.z, boss = m.b,
+    local s = Session.new({ id = m.s, itemId = m.it, itemName = m.nm, itemLink = m.lk, zone = m.z, boss = m.b,
                             leader = sender, council = m.co, rules = m.ru, mode = m.md, seconds = m.sec,
-                            priorityVersion = un(m.pv), now = self:now(),
-                            item = self.ctx.item(un(m.it), m.nm) })
+                            priorityVersion = m.pv, now = self:now(),
+                            item = self.ctx.item(m.it, m.nm) })
     s.openedAt = m.oa or s.openedAt
+    s.version = m.v or 0
     self:add(s)
     self:changed(s, "SESSION_OPEN")
     return {}
@@ -723,16 +852,27 @@ function Registry:handle(m, sender)
   end
 
   if m.t == "STATE" then
-    local o = m.o or {}
+    local o = m.o
     if nameKey(o.leader) ~= nameKey(sender) or not contains(o.council, me) then return {} end
-    local s = Session.fromState(m, self.ctx.item(un(o.itemId), o.itemName), self:now())
+    local known = self.sessions[m.s]
+    -- A snapshot may only come from the session's own leader, and never replaces newer state.
+    if known and (not known:isLeader(sender) or (m.v or 0) < (known.version or 0)) then return {} end
+    local s = Session.fromState(m, self.ctx.item(o.itemId, o.itemName), self:now())
     self:add(s)
     self:changed(s, "STATE")
     return {}
   end
 
   local s = self.sessions[m.s]
-  if not s then return {} end
+  if not s then
+    -- An update for a session we never saw open (we joined late): ask its sender once in a while.
+    local now = self:now()
+    if m.t ~= "RSP" and (not self.askedAt or now - self.askedAt >= Registry.STATE_RETRY) then
+      self.askedAt = now
+      return out({}, { t = "STATE_REQUEST" }, "WHISPER", sender)
+    end
+    return {}
+  end
 
   if m.t == "RSP" then
     if not s:isLeader(me) then return {} end
@@ -742,8 +882,20 @@ function Registry:handle(m, sender)
   -- Raiders outside the council only follow the session's open, close and award.
   local public = m.t == "SESSION_CLOSE" or m.t == "AWARD" or m.t == "UNAWARD" or m.t == "REROLL"
   if not public and not s:isCouncil(me) then return {} end
+  if m.t == "RESPONSE" and m.k and m.k > #s.candidates + 1 then return {} end
   if s:apply(m, sender) then self:changed(s, m.t) end
   return {}
+end
+
+-- restore(state, savedAt): bring back a session this client was leading before a reload.
+function Registry:restore(m, savedAt)
+  if not Session.valid(m) or nameKey(m.o.leader) ~= nameKey(self.ctx.me) or self.sessions[m.s] then return nil end
+  local now = self:now()
+  m.left = math.max(0, (m.left or 0) - (now - (savedAt or now)))
+  local s = Session.fromState(m, self.ctx.item(m.o.itemId, m.o.itemName), now)
+  self:add(s)
+  self:changed(s, "STATE")
+  return s
 end
 
 return Session

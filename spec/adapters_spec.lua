@@ -99,6 +99,66 @@ describe("addon in a fake client", function()
     assert.are.equal(1, #W.ns.Store.records(true))
   end)
 
+  it("re-exports a session whose record changed after it was cleared", function()
+    W.ns.App.import(sample)
+    W.slash("roll [Dragonspine Trophy]")
+    W.fire("CHAT_MSG_SYSTEM", "Anasazi rolls 41 (1-100)")
+    W.tick(31)
+    W.slash("export clear")
+    assert.are.equal(0, #W.ns.Store.records(false))
+    W.slash("award")
+    local recs = W.ns.Store.records(false)
+    assert.are.equal(1, #recs)
+    assert.are.equal("Anasazi", recs[1].awardedTo)
+  end)
+
+  it("records the priority pick named in /tlc award as a list award when only off-spec rolls came in", function()
+    W.ns.App.import(sample)
+    W.slash("roll [Dragonspine Trophy]")
+    W.fire("CHAT_MSG_SYSTEM", "Gally rolls 12 (1-99)")
+    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 94 (1-99)")
+    W.tick(31)
+    W.slash("award Gally")
+    local rec = W.ns.Store.records(false)[1]
+    assert.are.equal("list", rec.awardedVia)
+    assert.are.equal(W.ns.Codec.null, rec.override)
+  end)
+
+  it("picks up the leader's unfinished session after a reload", function()
+    W.ns.App.import(sample)
+    W.slash("roll [Dragonspine Trophy]")
+    W.fire("CHAT_MSG_SYSTEM", "Anasazi rolls 41 (1-100)")
+    local db = _G.ToadsLCDB
+    W.install({ db = db })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    assert.matches("Picked up your unfinished session", table.concat(W.printed, "\n"))
+    W.fire("CHAT_MSG_SYSTEM", "Gally rolls 97 (1-100)")
+    W.tick(31)
+    assert.matches("Anasazi wins", W.chat[#W.chat].text)
+    assert.matches("Gally 97", W.chat[#W.chat].text)
+  end)
+
+  it("asks for open sessions on joining a group", function()
+    local grouped = false
+    _G.IsInGroup = function() return grouped end
+    _G.IsInRaid = function() return grouped end
+    W.fire("GROUP_ROSTER_UPDATE") -- left the group
+    W.later, W.addon = {}, {}
+    grouped = true
+    W.fire("GROUP_ROSTER_UPDATE") -- joined one
+    assert.are.equal(2, #W.later)
+    for _, fn in ipairs(W.later) do fn() end
+    W.flushComms()
+    local asm = W.ns.Codec.newAssembler()
+    local found = false
+    for _, a in ipairs(W.addon) do
+      local m = asm.feed("me", a.text)
+      if m and m.t == "STATE_REQUEST" then found = true end
+    end
+    assert.is_true(found)
+  end)
+
   it("opens a council session and broadcasts it to the raid by addon message", function()
     W.ns.App.import(sample)
     W.slash("session [Dragonspine Trophy]")
@@ -148,5 +208,7 @@ describe("Chat", function()
     local lines = ns.Chat.split(string.rep("word ", 120))
     assert.is_true(#lines > 1)
     for _, l in ipairs(lines) do assert.is_true(#l <= 250) end
+    local long = string.rep("x", 600)
+    assert.are.equal(long, table.concat(ns.Chat.split(long)))
   end)
 end)

@@ -105,6 +105,18 @@ describe("Codec", function()
       assert.are.equal(Codec.encode(msg), Codec.encode(got))
     end)
 
+    it("bounds and expires incomplete messages", function()
+      local t = 0
+      local asm = Codec.newAssembler(function() return t end)
+      assert.is_nil(select(1, asm.feed("A", "1:1/65:x")))
+      for i = 1, Codec.MAX_PENDING do assert.is_nil(asm.feed("A", i .. ":1/2:x")) end
+      local _, err = asm.feed("A", "late:1/2:x")
+      assert.are.equal("too many incomplete messages", err)
+      t = Codec.PENDING_SECONDS + 1
+      _, err = asm.feed("A", "late:1/2:x")
+      assert.is_nil(err)
+    end)
+
     it("keeps senders apart", function()
       local asm = Codec.newAssembler()
       local a = Codec.wireChunks({ t = "VOTE", p = string.rep("a", 300) }, "1")

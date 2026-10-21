@@ -74,12 +74,20 @@ function Resolver.resolve(item, entries, rules)
     if rules.allOffspecMode == "highest" then result.winner, result.by = copy[1], "highest-roll" end
     if rules.allOffspecMode == "ask" then result.winner = nil end -- window shows both, LC picks
   end
-  local a, b = live[1], live[2]
-  result.tie = (b ~= nil and b.offspec == a.offspec and b.tier == a.tier and b.roll == a.roll) or false
+  -- A tie is on whatever decided the winner: tier and roll by priority, the roll alone
+  -- when the highest roll decides.
+  local order, sameRank = live, function(x, y) return x.offspec == y.offspec and x.tier == y.tier and x.roll == y.roll end
+  if result.by == "highest-roll" then
+    order = { unpack(live) }
+    table.sort(order, byRoll)
+    sameRank = function(x, y) return x.offspec == y.offspec and x.roll == y.roll end
+  end
+  local a, b = order[1], order[2]
+  result.tie = (b ~= nil and sameRank(a, b)) or false
   if result.tie then
     result.tied = {}
-    for _, e in ipairs(live) do
-      if e.offspec == a.offspec and e.tier == a.tier and e.roll == a.roll then result.tied[#result.tied + 1] = e.player end
+    for _, e in ipairs(order) do
+      if sameRank(a, e) then result.tied[#result.tied + 1] = e.player end
     end
   end
   return result

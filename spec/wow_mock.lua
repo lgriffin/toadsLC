@@ -39,7 +39,7 @@ function M.install(opts)
     { name = "Anasazi", class = "ROGUE" }, { name = "Gally", class = "WARRIOR" },
     { name = "Hadur", class = "SHAMAN", assist = true },
   }
-  M.timers = {}
+  M.timers, M.later = {}, {}
   local G = _G
   G.WOW_PROJECT_ID, G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC = opts.project or 5, 5
   G.RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
@@ -63,7 +63,7 @@ function M.install(opts)
   }
   G.C_Timer = {
     NewTicker = function(_, fn) table.insert(M.timers, fn) end,
-    After = function() end,
+    After = function(_, fn) table.insert(M.later, fn) end,
   }
   G.SendChatMessage = function(text, ch) table.insert(M.chat, { text = text, channel = ch }) end
   G.RandomRoll = function(a, b) table.insert(M.rolls, { a, b }) end
@@ -78,6 +78,8 @@ function M.install(opts)
     local i = tonumber((unit or ""):match("^raid(%d+)$"))
     return i and M.group[i]
   end
+  G.GetTime = function() return M.time end
+  G.UnitGUID = function(unit) local m = member(unit); return m and ("Player-" .. m.name) end
   G.UnitName = function(unit) local m = member(unit); return m and m.name end
   G.UnitClass = function(unit) local m = member(unit); return m and m.class, m and m.class end
   G.UnitIsUnit = function(a, b) local x, y = member(a), member(b); return x ~= nil and x == y end

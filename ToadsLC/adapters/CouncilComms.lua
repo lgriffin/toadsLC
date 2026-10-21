@@ -11,7 +11,7 @@ local PREFIX = "ToadsLC"
 local PER_SECOND = 8
 
 local queue, seq = {}, 0
-local asm = Codec.newAssembler()
+local asm = Codec.newAssembler(function() return GetTime() end)
 local frame = CreateFrame("Frame")
 
 local function groupChannel()
@@ -61,5 +61,9 @@ frame:SetScript("OnEvent", function(_, _, prefix, text, _, sender)
   sender = ns.Roster.normalize(sender)
   if ns.Priority.nameKey(sender) == ns.Priority.nameKey(ns.Roster.me()) then return end -- own echo
   local msg = asm.feed(sender, text)
-  if msg and Comms.onMessage then Comms.onMessage(msg, sender) end
+  if type(msg) == "table" and Comms.onMessage then
+    -- a message from another client must never break this one
+    local ok, err = pcall(Comms.onMessage, msg, sender)
+    if not ok and ns.Chat then ns.Chat.debug("dropped a message from " .. sender .. ": " .. tostring(err)) end
+  end
 end)

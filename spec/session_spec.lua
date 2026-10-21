@@ -272,3 +272,141 @@ describe("Session", function()
     assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (off-spec).", s:resultLine())
   end)
 end)
+
+describe("Session hardening", function()
+  local ns, Codec, priorities
+  before_each(function()
+    ns = H.core()
+    Codec = ns.Codec
+    priorities = assert(Codec.decode(H.read("fixtures/priority.sample.json")))
+  end)
+
+  local function setup()
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Anasazi", "Gally", "Raider" }, priorities)
+    local outs, s = raid.clients.Poohtank.reg:open({
+      itemId = 28830, itemName = "Dragonspine Trophy", council = { "Poohtank", "Hadur", "Anasazi", "Gally" },
+      rules = priorities.rules,
+    })
+    raid.send("Poohtank", outs)
+    raid.flush()
+    return raid, s.id
+  end
+
+  it("ignores a STATE from anyone but the session's own leader", function()
+    local raid, id = setup()
+    local forged = raid.clients.Poohtank.reg:get(id):stateMsg(raid.clock)
+    forged.o.leader = "Raider"
+    raid.send("Raider", { { msg = forged, dist = "RAID" } })
+    raid.flush()
+    assert.are.equal("Poohtank", raid.clients.Hadur.reg:get(id).leader)
+  end)
+
+  it("ignores a STATE older than what the officer already has", function()
+    local raid, id = setup()
+    raid.roll("Anasazi", 41)
+    local old = raid.clients.Poohtank.reg:get(id):stateMsg(raid.clock)
+    raid.act("Poohtank", "award", id, "Anasazi", "list")
+    raid.send("Poohtank", { { msg = old, dist = "WHISPER", target = "Hadur" } })
+    raid.flush()
+    assert.are.equal("Anasazi", raid.clients.Hadur.reg:get(id).awardedTo)
+  end)
+
+  it("asks the leader for a snapshot when an update arrives for a session it never saw", function()
+    local raid, id = setup()
+    local c = raid.clients.Gally
+    c.reg.sessions, c.reg.order = {}, {}
+    raid.roll("Anasazi", 41) -- the leader's RESPONSE broadcast reaches Gally, who asks for STATE
+    assert.is_not_nil(c.reg:get(id))
+    assert.are.equal(1, #c.reg:get(id).candidates)
+  end)
+
+  it("takes class and spec from the leader's roster, not the raider's claim", function()
+    local raid, id = setup()
+    raid.send("Gally", { { msg = { t = "RSP", s = id, r = "main", n = "", c = "Rogue", sp = "Rogue:Combat" },
+                           dist = "WHISPER", target = "Poohtank" } })
+    raid.flush()
+    local e = raid.clients.Poohtank.reg:get(id):entryFor("Gally")
+    assert.are.equal("Warrior", e.class)
+    assert.are.equal("Warrior:Fury", e.spec)
+    -- unknown to the roster: a claimed spec is only taken when it fits the class
+    raid.send("Hunt", { { msg = { t = "RSP", s = id, r = "main", c = "Hunter", sp = "Rogue:Combat" },
+                          dist = "WHISPER", target = "Poohtank" } })
+    raid.flush()
+    assert.is_nil(raid.clients.Poohtank.reg:get(id):entryFor("Hunt").spec)
+  end)
+
+  it("drops malformed messages without throwing", function()
+    local raid = setup()
+    local reg = raid.clients.Hadur.reg
+    for _, m in ipairs({
+      { t = "SESSION_OPEN", s = "x", nm = "Item", co = {}, sec = "30" },
+      { t = "SESSION_OPEN", s = "x", nm = "Item", co = {}, sec = 30, ru = { offspecRollMax = "99" } },
+      { t = "RESPONSE", s = "x", p = 5, r = "main" },
+      { t = "VOTE", s = {}, p = "Gally" },
+      { t = "STATE", s = "x", o = { leader = "Poohtank" }, oa = 1, ph = "open" },
+      { t = "NOPE" }, "string", 42,
+    }) do
+      assert.has_no.errors(function() reg:handle(m, "Poohtank") end)
+    end
+    assert.is_nil(reg:get("x"))
+    assert.is_nil((Codec.decode("[1e999]")))
+  end)
+
+  it("does not let the list pick a tied winner by name", function()
+    local raid, id = setup()
+    raid.roll("Anasazi", 50)
+    raid.roll("Gally", 50)
+    raid.act("Poohtank", "setSpec", id, "Gally", "Warrior:Fury")
+    local s = raid.clients.Poohtank.reg:get(id)
+    s.item = { priority = { { { spec = "Rogue:*" }, { spec = "Warrior:*" } } } }
+    raid.act("Poohtank", "close", id)
+    assert.is_nil(s.computedWinner)
+    local opts = s:awardOptions()
+    assert.is_nil(opts.list)
+    assert.are.same({ "Anasazi", "Gally" }, opts.tied)
+  end)
+
+  it("restores the computed winner when an all-off-spec highest-roll award is undone", function()
+    local raid, id = setup()
+    raid.roll("Gally", 12, 1, 99)
+    raid.roll("Poohtank", 94, 1, 99)
+    raid.act("Poohtank", "award", id, "Poohtank", "highest-roll")
+    raid.act("Poohtank", "unaward", id)
+    raid.act("Poohtank", "award", id, "Gally", "list")
+    local rec = raid.clients.Hadur.reg:get(id):serialize()
+    assert.are.equal("Gally", rec.computedWinner)
+    assert.are.equal("priority", rec.computedBy)
+    assert.are.equal(Codec.null, rec.override)
+  end)
+
+  it("lets a leader pick a session back up after a reload", function()
+    local raid, id = setup()
+    raid.roll("Anasazi", 41)
+    local c = raid.clients.Poohtank
+    local saved = c.reg:get(id):stateMsg(raid.clock)
+    saved = assert(Codec.decode(Codec.encode(saved))) -- through SavedVariables as JSON
+    c.reg.sessions, c.reg.order = {}, {}
+    raid.clock = raid.clock + 40
+    local s = c.reg:restore(saved, raid.clock - 40)
+    assert.are.equal(1, #s.candidates)
+    raid.send("Poohtank", c.reg:tick())
+    raid.flush()
+    assert.are.equal("Anasazi", s.computedWinner)
+    assert.are.equal("Anasazi", raid.clients.Hadur.reg:get(id).computedWinner)
+  end)
+end)
+
+describe("Resolver ties in highest-roll mode", function()
+  it("flags a top-roll tie across tiers and not a priority tie below the top roll", function()
+    local ns = H.core()
+    local item = { priority = { { { spec = "Rogue:*" } }, { { spec = "Warrior:*" } } } }
+    local rules = { allOffspecMode = "highest" }
+    local function e(p, c, roll) return { player = p, class = c, roll = roll, max = 99 } end
+    local r = ns.Resolver.resolve(item, { e("A", "Rogue", 80), e("B", "Warrior", 80), e("C", "Mage", 10) }, rules)
+    assert.is_true(r.tie)
+    assert.are.same({ "A", "B" }, r.tied)
+    r = ns.Resolver.resolve(item, { e("A", "Rogue", 20), e("B", "Rogue", 20), e("C", "Mage", 90) }, rules)
+    assert.is_false(r.tie)
+    assert.are.equal("C", r.winner.player)
+  end)
+end)

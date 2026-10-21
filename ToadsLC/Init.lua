@@ -19,14 +19,19 @@ end
 function App.now() return GetServerTime and GetServerTime() or time() end
 
 local lastBoss = ""
+local wasGrouped = false
 local loginTime = 0
 
 ---------------------------------------------------------------------------
 -- session events
 ---------------------------------------------------------------------------
 
+local LIVE_MAX_AGE = 2 * 3600 -- a leader's unfinished session survives a reload this long
+
 local function persist(s)
-  if s:isLeader(Roster.me()) and s.phase ~= "open" then Store.saveSession(s:serialize(), s.openedAt) end
+  if not s:isLeader(Roster.me()) then return end
+  if s.phase ~= "open" then Store.saveSession(s:serialize(), s.openedAt) end
+  if s.phase == "done" then Store.clearLive(s.id) else Store.saveLive(s.id, s:stateMsg(App.now()), App.now()) end
 end
 
 local function onChange(s, what)
@@ -146,11 +151,17 @@ function App.awardLast(name, reason)
   if name then
     local opts = s:awardOptions()
     local via = "manual"
-    if opts.list and Priority.nameKey(opts.list) == Priority.nameKey(name) then via = "list"
+    local listPick = opts.list or opts.listPriority
+    if listPick and Priority.nameKey(listPick) == Priority.nameKey(name) then via = "list"
     elseif opts.highest and Priority.nameKey(opts.highest) == Priority.nameKey(name) then via = "highest-roll" end
     App.award(s.id, name, via, reason)
   else
     if s.phase == "open" then App.close(s.id) end
+    local tied = s:awardOptions().tied
+    if tied then
+      Chat.print("Tied: " .. table.concat(tied, " and ") .. ". /tlc reroll, or /tlc award <name> [reason].")
+      return
+    end
     if not s.computedWinner or s.listRoll then
       Chat.print("The list does not name a single winner: /tlc award <name> [reason].")
       return
@@ -279,6 +290,13 @@ local function onRoll(text)
   if who and not who.spec then Roster.queueInspect({ name }) end
 end
 
+-- Ask the leaders for any open session: at login, and on joining a group. The second ask
+-- covers a leader whose client was still loading.
+function App.askState()
+  C_Timer.After(5, function() send(App.registry:requestState()) end)
+  C_Timer.After(20, function() if IsInGroup() then send(App.registry:requestState()) end end)
+end
+
 local function start()
   Store.init()
   loginTime = App.now()
@@ -292,11 +310,15 @@ local function start()
   Comms.init(function(msg, sender) send(App.registry:handle(msg, sender)) end)
   ns.Tooltip.init()
   ns.Commands.init()
-  C_Timer.NewTicker(0.5, function() send(App.registry:tick()) end)
-  if IsInGroup() then
-    C_Timer.After(5, function() send(App.registry:requestState()) end)
+  for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
+    local s = App.registry:restore(row.state, row.at)
+    if s then Chat.print("Picked up your unfinished session for " .. s.itemName .. ".") end
   end
+  C_Timer.NewTicker(0.5, function() send(App.registry:tick()) end)
+  wasGrouped = IsInGroup()
+  if wasGrouped then App.askState() end
   frame:RegisterEvent("CHAT_MSG_SYSTEM")
+  frame:RegisterEvent("GROUP_ROSTER_UPDATE")
   frame:RegisterEvent("ENCOUNTER_END")
   frame:RegisterEvent("BOSS_KILL")
 end
@@ -311,6 +333,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
     start()
   elseif event == "CHAT_MSG_SYSTEM" then
     onRoll(...)
+  elseif event == "GROUP_ROSTER_UPDATE" then
+    local grouped = IsInGroup()
+    if grouped and not wasGrouped then App.askState() end
+    wasGrouped = grouped
   elseif event == "ENCOUNTER_END" then
     local _, encounterName, _, _, success = ...
     if success == 1 then lastBoss = encounterName or "" end

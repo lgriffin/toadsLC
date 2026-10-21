@@ -234,7 +234,7 @@ function Decoder:value()
     if num and num ~= "" and num ~= "-" then
       self.pos = self.pos + #num
       local n = tonumber(num)
-      if not n then self:fail("bad number") end
+      if not n or n ~= n or n == huge or n == -huge then self:fail("bad number") end
       return n
     end
     for word, val in pairs({ ["true"] = true, ["false"] = false, ["null"] = Codec.null }) do
@@ -515,21 +515,40 @@ function Codec.wireChunks(msg, msgId)
   return out
 end
 
+Codec.MAX_PARTS = 64        -- about 15 KB, far above the largest STATE
+Codec.MAX_PENDING = 100     -- incomplete messages held at once, across senders
+Codec.PENDING_SECONDS = 30  -- an incomplete message older than this is dropped
+
 -- Assembler: feed(sender, chunk) returns the decoded message once every part has arrived.
-function Codec.newAssembler()
-  local pending = {}
+-- clock() (optional) returns seconds; incomplete messages expire after PENDING_SECONDS.
+function Codec.newAssembler(clock)
+  local pending, count = {}, 0
   local A = {}
+  local function expire(now)
+    for key, p in pairs(pending) do
+      if now - p.at > Codec.PENDING_SECONDS then pending[key] = nil; count = count - 1 end
+    end
+  end
   function A.feed(sender, chunk)
     local id, i, n, data = chunk:match("^([^:]+):(%d+)/(%d+):(.*)$")
     if not id then return nil, "malformed chunk" end
     i, n = tonumber(i), tonumber(n)
-    if i < 1 or i > n then return nil, "malformed chunk" end
+    if i < 1 or i > n or n > Codec.MAX_PARTS then return nil, "malformed chunk" end
+    local now = clock and clock() or 0
     local key = sender .. "\0" .. id
     local p = pending[key]
-    if not p then p = { n = n, got = 0, parts = {} }; pending[key] = p end
+    if not p then
+      if count >= Codec.MAX_PENDING then expire(now) end
+      if count >= Codec.MAX_PENDING then return nil, "too many incomplete messages" end
+      p = { n = n, got = 0, parts = {}, at = now }
+      pending[key] = p
+      count = count + 1
+    end
+    if p.n ~= n then return nil, "malformed chunk" end
     if not p.parts[i] then p.parts[i] = data; p.got = p.got + 1 end
     if p.got < p.n then return nil end
     pending[key] = nil
+    count = count - 1
     return Codec.decode(concat(p.parts))
   end
   return A

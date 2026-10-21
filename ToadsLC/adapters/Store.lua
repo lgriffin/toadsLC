@@ -48,7 +48,9 @@ function Store.saveSession(rec, openedAt)
     ToadsLCDB.sessions[rec.id] = row
     table.insert(ToadsLCDB.order, rec.id)
   end
-  row.json = Codec.encode(rec)
+  local json = Codec.encode(rec)
+  if json ~= row.json then row.exported = false end -- changed since it was sent: send it again
+  row.json = json
   row.openedAt = openedAt or row.openedAt
 end
 
@@ -75,6 +77,27 @@ function Store.markExported(ids)
     local row = ToadsLCDB.sessions[id]
     if row then row.exported = true end
   end
+end
+
+-- Sessions a leader is still running, as STATE snapshots, so a reload can pick them up.
+function Store.saveLive(id, state, now)
+  ToadsLCDB.live = ToadsLCDB.live or {}
+  ToadsLCDB.live[id] = { json = Codec.encode(state), at = now }
+end
+
+function Store.clearLive(id)
+  if ToadsLCDB.live then ToadsLCDB.live[id] = nil end
+end
+
+-- live(maxAge, now) -> { { state, at }, ... } newer than maxAge seconds; older ones are dropped
+function Store.live(maxAge, now)
+  local out = {}
+  for id, row in pairs(ToadsLCDB.live or {}) do
+    local state = now - (row.at or 0) <= maxAge and Codec.decode(row.json)
+    if state then out[#out + 1] = { state = state, at = row.at } else ToadsLCDB.live[id] = nil end
+  end
+  table.sort(out, function(a, b) return a.at < b.at end)
+  return out
 end
 
 -- since(t) -> records opened at or after t (tonight's history)
