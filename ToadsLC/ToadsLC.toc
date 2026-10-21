@@ -9,6 +9,8 @@ core\Codec.lua
 core\Priority.lua
 core\Resolver.lua
 core\Session.lua
+core\Crypto.lua
+core\Wire.lua
 
 data\RaidLoot.lua
 

@@ -1,17 +1,20 @@
--- CouncilComms: addon messages with prefix ToadsLC. Messages are JSON split into chunks
--- (Codec.wireChunks) and sent through a small throttled queue; incoming chunks are
--- reassembled per sender and handed to the registry.
+-- CouncilComms: addon messages with prefix ToadsLC. Messages are packed by core/Wire.lua
+-- (signed and, for council traffic, encrypted once a raid password is set) and sent
+-- through a small throttled queue; incoming chunks are reassembled per sender, checked
+-- and handed to the registry with whether they were signed with our password.
 local _, ns = ...
 
 local Comms = {}
 ns.Comms = Comms
 
-local Codec = ns.Codec
 local PREFIX = "ToadsLC"
 local PER_SECOND = 8
 
-local queue, seq = {}, 0
-local asm = Codec.newAssembler(function() return GetTime() end)
+local queue = {}
+local wire = ns.Wire.new({
+  secret = function() return ns.App and ns.App.secret() end,
+  clock = function() return GetTime() end,
+})
 local frame = CreateFrame("Frame")
 
 local function groupChannel()
@@ -19,8 +22,10 @@ local function groupChannel()
   if IsInGroup() then return "PARTY" end
 end
 
-function Comms.init(onMessage)
-  Comms.onMessage = onMessage
+-- init(onMessage(msg, sender, trusted, signed), onSealed(sender)): onSealed is told about
+-- council traffic sealed under a password this client does not hold.
+function Comms.init(onMessage, onSealed)
+  Comms.onMessage, Comms.onSealed = onMessage, onSealed
   local register = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix) or RegisterAddonMessagePrefix
   register(PREFIX)
   frame:RegisterEvent("CHAT_MSG_ADDON")
@@ -37,8 +42,7 @@ function Comms.send(outs)
       dist = nil -- whisper to myself: already handled locally
     end
     if dist then
-      seq = (seq % 9999) + 1
-      for _, chunk in ipairs(Codec.wireChunks(o.msg, tostring(seq))) do
+      for _, chunk in ipairs(wire.pack(o.msg, ns.Roster.me())) do
         queue[#queue + 1] = { chunk, dist, target }
       end
     end
@@ -60,10 +64,13 @@ frame:SetScript("OnEvent", function(_, _, prefix, text, _, sender)
   if prefix ~= PREFIX then return end
   sender = ns.Roster.normalize(sender)
   if ns.Priority.nameKey(sender) == ns.Priority.nameKey(ns.Roster.me()) then return end -- own echo
-  local msg = asm.feed(sender, text)
+  local msg, trusted, signed = wire.unpack(sender, text)
+  if msg == nil and trusted == "sealed for another password" and Comms.onSealed then
+    pcall(Comms.onSealed, sender)
+  end
   if type(msg) == "table" and Comms.onMessage then
     -- a message from another client must never break this one
-    local ok, err = pcall(Comms.onMessage, msg, sender)
+    local ok, err = pcall(Comms.onMessage, msg, sender, trusted, signed)
     if not ok and ns.Chat then ns.Chat.debug("dropped a message from " .. sender .. ": " .. tostring(err)) end
   end
 end)
