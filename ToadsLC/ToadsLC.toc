@@ -1,0 +1,22 @@
+## Interface: 20505
+## Title: Toads LC
+## Notes: Toads loot priorities on item tooltips, and loot sessions resolved by priority first, roll second.
+## Author: Toads (Spineshatter EU)
+## Version: 0.1.0
+## SavedVariables: ToadsLCDB
+
+core\Codec.lua
+core\Priority.lua
+core\Resolver.lua
+core\Session.lua
+
+adapters\Store.lua
+adapters\Roster.lua
+adapters\RollParser.lua
+adapters\Chat.lua
+adapters\CouncilComms.lua
+adapters\Tooltip.lua
+adapters\Frames.lua
+adapters\Commands.lua
+
+Init.lua

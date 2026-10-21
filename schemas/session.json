@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "toads-loot-session v1",
+  "description": "Loot sessions recorded by the ToadsLC addon and imported by the Toads site.",
+  "type": "object",
+  "required": ["format", "version", "exportedAt", "exportedBy", "addonVersion", "sessions"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "toads-loot-session" },
+    "version": { "const": 1 },
+    "exportedAt": { "type": "string", "minLength": 1 },
+    "exportedBy": { "type": "string", "minLength": 1 },
+    "addonVersion": { "type": "string", "minLength": 1 },
+    "priorityVersion": { "type": ["string", "null"] },
+    "sessions": { "type": "array", "items": { "$ref": "#/$defs/session" } }
+  },
+  "$defs": {
+    "name": { "type": "string", "minLength": 1 },
+    "candidate": {
+      "type": "object",
+      "required": ["player", "response"],
+      "additionalProperties": false,
+      "properties": {
+        "player": { "$ref": "#/$defs/name" },
+        "class": { "type": ["string", "null"] },
+        "spec": { "type": ["string", "null"] },
+        "response": { "enum": ["main", "offspec"] },
+        "roll": { "type": ["integer", "null"], "minimum": 0 },
+        "max": { "type": ["integer", "null"], "minimum": 0 },
+        "tier": { "type": ["integer", "null"], "minimum": 1 },
+        "note": { "type": ["string", "null"] },
+        "ignored": {
+          "description": "Why the row does not count: duplicate, out-of-range or rerolled.",
+          "anyOf": [{ "type": "string" }, { "const": true }]
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": ["id", "itemName", "openedAt", "leader", "candidates", "computedBy"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "itemId": { "type": ["integer", "null"], "minimum": 1 },
+        "itemName": { "type": "string", "minLength": 1 },
+        "zone": { "type": ["string", "null"] },
+        "boss": { "type": ["string", "null"] },
+        "openedAt": { "type": "string", "minLength": 1 },
+        "closedAt": { "type": ["string", "null"] },
+        "leader": { "$ref": "#/$defs/name" },
+        "council": { "type": "array", "items": { "$ref": "#/$defs/name" } },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } },
+        "passes": { "type": "integer", "minimum": 0 },
+        "votes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "proposal": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["by", "player"], "additionalProperties": false,
+              "properties": { "by": { "$ref": "#/$defs/name" }, "player": { "$ref": "#/$defs/name" },
+                              "reason": { "type": ["string", "null"] } } }
+          ]
+        },
+        "computedWinner": { "type": ["string", "null"] },
+        "computedBy": { "enum": ["priority", "highest-roll", "none"] },
+        "awardedTo": { "type": ["string", "null"] },
+        "awardedBy": { "type": ["string", "null"] },
+        "awardedVia": { "enum": ["votes", "proposal", "list", "highest-roll", "manual", null] },
+        "override": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["by", "reason"], "additionalProperties": false,
+              "properties": { "by": { "$ref": "#/$defs/name" }, "reason": { "type": "string" } } }
+          ]
+        }
+      }
+    }
+  }
+}

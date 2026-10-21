@@ -1,0 +1,23 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  addon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1, busted and luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 lua-busted lua-check
+      - name: Lint
+        run: luacheck .
+      - name: Core and adapter tests (Lua 5.1, the client's version)
+        run: lua5.1 /usr/bin/busted
+      - name: Contract check against the JSON Schemas
+        run: |
+          pip install jsonschema==4.23.0
+          python3 tools/contract.py

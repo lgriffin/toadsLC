@@ -1,0 +1,321 @@
+-- Init: wires the core to the client. Everything that decides who wins is in core/;
+-- this file only connects events, frames and chat to the session registry.
+local addonName, ns = ...
+
+local App = {}
+ns.App = App
+
+local Codec, Priority, Session = ns.Codec, ns.Priority, ns.Session
+local Store, Roster, Chat, Comms, Frames = ns.Store, ns.Roster, ns.Chat, ns.Comms, ns.Frames
+
+App.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(addonName, "Version") or "dev"
+
+-- v1 runs on the TBC Classic client only; the WoW Forever port replaces the adapters.
+local function supportedClient()
+  return WOW_PROJECT_ID ~= nil and WOW_PROJECT_BURNING_CRUSADE_CLASSIC ~= nil
+     and WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC
+end
+
+function App.now() return GetServerTime and GetServerTime() or time() end
+
+local lastBoss = ""
+local loginTime = 0
+
+---------------------------------------------------------------------------
+-- session events
+---------------------------------------------------------------------------
+
+local function persist(s)
+  if s:isLeader(Roster.me()) and s.phase ~= "open" then Store.saveSession(s:serialize(), s.openedAt) end
+end
+
+local function onChange(s, what)
+  local me = Roster.me()
+  if what == "SESSION_OPEN" then
+    if s.mode == "session" then
+      if s:isCouncil(me) then Frames.showCouncil(s.id) end
+      Frames.showCandidate(s)
+    end
+  elseif what == "SESSION_CLOSE" then
+    Frames.hideCandidate(s)
+    if s:isLeader(me) and s.mode == "roll" then Chat.say(s:resultLine()) end
+  elseif what == "REROLL" then
+    if s:isLeader(me) then
+      local names = {}
+      for _, e in ipairs(s.candidates) do
+        if e.ignored == "rerolled" and s.restrict[Priority.nameKey(e.player)] then names[#names + 1] = e.player end
+      end
+      Chat.say(string.format("[ToadsLC] %s: tie, re-roll %s (%d s).", s.itemName, table.concat(names, " and "),
+        Session.REROLL_SECONDS), true)
+    end
+  elseif what == "AWARD" then
+    if s:isLeader(me) then Chat.say(s:awardLine(), true) end
+  elseif what == "STATE" then
+    Frames.sessionsChanged()
+  end
+  persist(s)
+  if what ~= "SESSION_OPEN" then Frames.refresh() end
+end
+
+App.registry = nil
+
+local function send(outs) Comms.send(outs) end
+
+function App.openSessionFor(itemId)
+  if not App.registry then return nil end
+  return App.registry:latest(function(s) return s.phase == "open" and s.itemId == itemId end)
+end
+
+---------------------------------------------------------------------------
+-- actions
+---------------------------------------------------------------------------
+
+local function parseItem(text)
+  text = text and text:match("^%s*(.-)%s*$") or ""
+  if text == "" then return nil end
+  local itemId = tonumber(text:match("item:(%d+)"))
+  local name = text:match("%[(.-)%]") or text
+  local pdb = Store.priorities()
+  if not itemId then
+    local item = Priority.lookup(pdb, nil, name)
+    itemId = item and item.itemId
+  end
+  local link = text:find("|H") and text or nil
+  if itemId and not link then
+    local _, l = GetItemInfo(itemId)
+    link = l
+  end
+  return itemId, name, link or ("[" .. name .. "]")
+end
+
+function App.open(itemText, seconds, mode)
+  if not Roster.canLead() then
+    Chat.print("You need raid lead or assist to start a " .. mode .. ".")
+    return
+  end
+  local itemId, name, link = parseItem(itemText)
+  if not name then
+    Chat.print("Usage: /tlc " .. mode .. " <item link> [seconds]")
+    return
+  end
+  local pdb = Store.priorities() or {}
+  local rules = pdb.rules or {}
+  local outs, s = App.registry:open({
+    itemId = itemId, itemName = name, itemLink = link,
+    zone = (GetInstanceInfo()) or "", boss = lastBoss,
+    council = mode == "session" and Roster.council() or {},
+    rules = rules, mode = mode,
+    seconds = seconds or (mode == "roll" and Store.settings().rollSeconds) or rules.sessionSeconds,
+    priorityVersion = pdb.version,
+  })
+  send(outs)
+  Chat.say(s:openLine(), true)
+end
+
+function App.respond(id, response, note)
+  local s = App.registry:get(id)
+  if not s then return end
+  send(App.registry:respond(id, response, note, Roster.specOf("player")))
+  if response == "main" then RandomRoll(1, 100)
+  elseif response == "offspec" then RandomRoll(1, s.rules.offspecRollMax) end
+end
+
+function App.vote(id, player) send(App.registry:vote(id, player)) end
+function App.propose(id, player, reason) send(App.registry:propose(id, player, reason)) end
+function App.setSpec(id, player, spec) send(App.registry:setSpec(id, player, spec)) end
+function App.close(id) send(App.registry:close(id)) end
+function App.reroll(id) send(App.registry:reroll(id)) end
+
+function App.award(id, player, via, reason)
+  local s = App.registry:get(id)
+  if not s or not s:isLeader(Roster.me()) then
+    Chat.print("Only the session leader can award.")
+    return
+  end
+  send(App.registry:award(id, player, via, reason))
+end
+
+local function lastLed(filter)
+  local me = Roster.me()
+  return App.registry:latest(function(s) return s:isLeader(me) and (not filter or filter(s)) end)
+end
+
+function App.awardLast(name, reason)
+  local s = lastLed(function(x) return x.phase ~= "done" end)
+  if not s then Chat.print("Nothing to award."); return end
+  if name then
+    local opts = s:awardOptions()
+    local via = "manual"
+    if opts.list and Priority.nameKey(opts.list) == Priority.nameKey(name) then via = "list"
+    elseif opts.highest and Priority.nameKey(opts.highest) == Priority.nameKey(name) then via = "highest-roll" end
+    App.award(s.id, name, via, reason)
+  else
+    if s.phase == "open" then App.close(s.id) end
+    if not s.computedWinner or s.listRoll then
+      Chat.print("The list does not name a single winner: /tlc award <name> [reason].")
+      return
+    end
+    App.award(s.id, s.computedWinner, "list")
+  end
+end
+
+function App.closeLast()
+  local s = lastLed(function(x) return x.phase == "open" end)
+  if s then App.close(s.id) else Chat.print("No open session.") end
+end
+
+function App.rerollLast()
+  local s = lastLed(function(x) return x.phase == "voting" end)
+  if s then App.reroll(s.id) else Chat.print("Nothing to re-roll.") end
+end
+
+function App.undoLast()
+  local s = lastLed(function(x) return x.phase == "done" end)
+  if not s then Chat.print("No award to undo."); return end
+  send(App.registry:unaward(s.id))
+  Chat.print("Reopened " .. s.itemName .. "; award again from the council frame or /tlc award.")
+end
+
+---------------------------------------------------------------------------
+-- import / export
+---------------------------------------------------------------------------
+
+local function dateOf(iso)
+  local y, m, d = (iso or ""):match("^(%d+)-(%d+)-(%d+)")
+  if not y then return iso or "?" end
+  local months = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
+  return string.format("%d %s %s", tonumber(d), months[tonumber(m)] or m, y)
+end
+
+function App.import(text)
+  local doc, err = Codec.decode(text or "")
+  if not doc then
+    local msg = "import failed: " .. err
+    Chat.print(msg)
+    return false, msg
+  end
+  local ok, verr = Codec.validatePriority(doc)
+  if not ok then
+    local msg = "import failed: " .. verr
+    Chat.print(msg)
+    return false, msg
+  end
+  local previous = Store.priorities()
+  local pdb = Priority.index(Codec.stripNulls(doc), Roster.me(), App.now())
+  Store.setPriorities(pdb)
+  local msg = string.format("Imported %d items, dated %s%s.", pdb.count, dateOf(pdb.exportedAt),
+    previous and (", replacing the list dated " .. dateOf(previous.exportedAt)) or "")
+  Chat.print(msg)
+  return true, msg
+end
+
+function App.undoImport()
+  if Store.undoImport() then
+    local p = Store.priorities()
+    Chat.print(string.format("Restored the list dated %s (%d items).", dateOf(p.exportedAt), p.count))
+  else
+    Chat.print("Nothing to undo.")
+  end
+end
+
+function App.export(all)
+  local records = Store.records(all)
+  local pdb = Store.priorities()
+  local realm = (GetRealmName() or ""):gsub("%s", "")
+  local doc = {
+    format = Codec.SESSION_FORMAT, version = Codec.VERSION,
+    exportedAt = Codec.isoTime(App.now()),
+    exportedBy = Roster.me() .. "-" .. realm,
+    addonVersion = App.VERSION,
+    priorityVersion = pdb and pdb.version or Codec.null,
+    sessions = Codec.array(records),
+  }
+  Frames.showExport(Codec.encode(doc, "  "),
+    string.format("%d session%s. After the site accepts it: /tlc export clear", #records, #records == 1 and "" or "s"))
+end
+
+function App.exportClear()
+  local _, ids = Store.records(false)
+  Store.markExported(ids)
+  Chat.print(string.format("Marked %d session%s as sent.", #ids, #ids == 1 and "" or "s"))
+end
+
+function App.status()
+  local p = Store.priorities()
+  if not p then
+    Chat.print("Priorities: none imported. /tlc import")
+  else
+    Chat.print(string.format("Priorities: %d items, dated %s, imported by %s", p.count, dateOf(p.exportedAt),
+      p.importedBy or "?"))
+  end
+  local _, ids = Store.records(false)
+  Chat.print(string.format("Sessions waiting for export: %d", #ids))
+end
+
+function App.history()
+  local since = loginTime - 6 * 3600
+  local recs = Store.since(since)
+  if #recs == 0 then Chat.print("No awards tonight."); return end
+  for _, r in ipairs(recs) do
+    local to = r.awardedTo ~= Codec.null and r.awardedTo or "not awarded"
+    local ov = (r.override ~= Codec.null and r.override) and (" (override: " .. (r.override.reason or "") .. ")") or ""
+    Chat.print(string.format("%s: %s%s", r.itemName, to, ov))
+  end
+end
+
+---------------------------------------------------------------------------
+-- events
+---------------------------------------------------------------------------
+
+local frame = CreateFrame("Frame")
+
+local function onRoll(text)
+  local name, roll, min, max = ns.RollParser.parse(text)
+  if not name then return end
+  name = Roster.normalize(name)
+  local outs = App.registry:roll(name, roll, min, max)
+  send(outs)
+  local who = Roster.who(name)
+  if who and not who.spec then Roster.queueInspect({ name }) end
+end
+
+local function start()
+  Store.init()
+  loginTime = App.now()
+  App.registry = Session.newRegistry({
+    me = Roster.me(),
+    now = App.now,
+    item = function(id, name) return Priority.lookup(Store.priorities(), id, name) end,
+    who = Roster.who,
+    onChange = onChange,
+  })
+  Comms.init(function(msg, sender) send(App.registry:handle(msg, sender)) end)
+  ns.Tooltip.init()
+  ns.Commands.init()
+  C_Timer.NewTicker(0.5, function() send(App.registry:tick()) end)
+  if IsInGroup() then
+    C_Timer.After(5, function() send(App.registry:requestState()) end)
+  end
+  frame:RegisterEvent("CHAT_MSG_SYSTEM")
+  frame:RegisterEvent("ENCOUNTER_END")
+  frame:RegisterEvent("BOSS_KILL")
+end
+
+frame:RegisterEvent("PLAYER_LOGIN")
+frame:SetScript("OnEvent", function(_, event, ...)
+  if event == "PLAYER_LOGIN" then
+    if not supportedClient() then
+      DEFAULT_CHAT_FRAME:AddMessage("|cff33cc66[ToadsLC]|r This version runs on the TBC Classic client only; it is disabled here.")
+      return
+    end
+    start()
+  elseif event == "CHAT_MSG_SYSTEM" then
+    onRoll(...)
+  elseif event == "ENCOUNTER_END" then
+    local _, encounterName, _, _, success = ...
+    if success == 1 then lastBoss = encounterName or "" end
+  elseif event == "BOSS_KILL" then
+    local _, encounterName = ...
+    lastBoss = encounterName or lastBoss
+  end
+end)
