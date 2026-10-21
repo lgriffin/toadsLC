@@ -12,7 +12,7 @@ jobs:
       - name: Install Lua 5.1, busted and luacheck
         run: |
           sudo apt-get update
-          sudo apt-get install -y lua5.1 lua-busted lua-check
+          sudo apt-get install -y lua5.1 lua-busted lua-check lua-bitop
       - name: Lint
         run: luacheck .
       - name: Core and adapter tests (Lua 5.1, the client's version)
@@ -23,3 +23,13 @@ jobs:
           python3 tools/contract.py
       - name: Loot tables match the overrides (rebuilds from the pinned npm package)
         run: python3 tools/build_loot.py --check
+      - name: Python tool tests (packager, item resolver)
+        run: python3 -m unittest discover -s tests
+      - name: Build the release zip
+        run: python3 tools/package.py
+      - name: Upload the zip (unzip into Interface/AddOns)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ToadsLC-addon
+          path: build/ToadsLC-*.zip
+          if-no-files-found: error

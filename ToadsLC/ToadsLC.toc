@@ -1,4 +1,4 @@
-## Interface: 20505
+## Interface: 20505, 20506
 ## Title: Toads LC
 ## Notes: Toads loot priorities on item tooltips, and loot sessions resolved by priority first, roll second.
 ## Author: Toads (Spineshatter EU)
@@ -9,6 +9,8 @@ core\Codec.lua
 core\Priority.lua
 core\Resolver.lua
 core\Session.lua
+core\Crypto.lua
+core\Wire.lua
 
 data\RaidLoot.lua
 

@@ -505,8 +505,9 @@ end
 
 Codec.CHUNK = 230
 
-function Codec.wireChunks(msg, msgId)
-  local body = Codec.encode(msg)
+-- wireChunks(text, msgId): text is the string to send (a table is JSON-encoded first).
+function Codec.wireChunks(text, msgId)
+  local body = type(text) == "table" and Codec.encode(text) or text
   local n = math.max(1, math.ceil(#body / Codec.CHUNK))
   local out = {}
   for i = 1, n do
@@ -515,11 +516,11 @@ function Codec.wireChunks(msg, msgId)
   return out
 end
 
-Codec.MAX_PARTS = 64        -- about 15 KB, far above the largest STATE
+Codec.MAX_PARTS = 128       -- about 29 KB: a full STATE, encrypted and base64'd, fits easily
 Codec.MAX_PENDING = 100     -- incomplete messages held at once, across senders
 Codec.PENDING_SECONDS = 30  -- an incomplete message older than this is dropped
 
--- Assembler: feed(sender, chunk) returns the decoded message once every part has arrived.
+-- Assembler: feed(sender, chunk) returns the reassembled text once every part has arrived.
 -- clock() (optional) returns seconds; incomplete messages expire after PENDING_SECONDS.
 function Codec.newAssembler(clock)
   local pending, count = {}, 0
@@ -549,7 +550,7 @@ function Codec.newAssembler(clock)
     if p.got < p.n then return nil end
     pending[key] = nil
     count = count - 1
-    return Codec.decode(concat(p.parts))
+    return concat(p.parts)
   end
   return A
 end
