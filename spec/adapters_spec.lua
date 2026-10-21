@@ -322,6 +322,7 @@ describe("/tlc sim", function()
     local asm, types = W.ns.Codec.newAssembler(), {}
     for _, a in ipairs(W.addon) do
       local m = asm.feed("Poohtank", a.text)
+      if type(m) == "string" then m = W.ns.Codec.decode(m) end -- the signed wire format hands back text
       if m then types[#types + 1] = m.t end
     end
     assert.are.same({ "SESSION_CLOSE", "AWARD" }, types)
