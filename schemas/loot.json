@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "toads-raid-loot v1",
+  "description": "TBC raid loot tables built by tools/build_loot.py. The site uses them to fill itemId, zone, boss and phase on priority items.",
+  "type": "object",
+  "required": ["format", "version", "source", "zones", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "toads-raid-loot" },
+    "version": { "const": 1 },
+    "source": {
+      "type": "object",
+      "required": ["package"],
+      "additionalProperties": false,
+      "properties": {
+        "package": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" }
+      }
+    },
+    "zones": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "phase", "bosses"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "phase": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "bosses": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+  },
+  "$defs": {
+    "itemIds": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1 } },
+    "item": {
+      "type": "object",
+      "required": ["itemId", "name", "quality", "slot", "itemLevel", "zone", "boss", "phase"],
+      "additionalProperties": false,
+      "properties": {
+        "itemId": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "quality": { "enum": ["Rare", "Epic", "Legendary"] },
+        "slot": { "type": "string", "minLength": 1 },
+        "itemLevel": { "type": "integer", "minimum": 1 },
+        "zone": { "type": "string", "minLength": 1 },
+        "boss": { "type": ["string", "null"], "minLength": 1, "description": "A boss from zones[].bosses, \"Trash\", or null when the source cannot say which boss drops it." },
+        "phase": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "rewards": { "$ref": "#/$defs/itemIds", "description": "On a tier token or quest item: the items it can be exchanged for." },
+        "tokens": { "$ref": "#/$defs/itemIds", "description": "On a tier piece or quest reward: the drops that buy it. zone, boss and phase are the token's." }
+      }
+    }
+  }
+}
