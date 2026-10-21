@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "toads-loot-priority v1",
+  "description": "Class priorities per item, exported by the Toads site and imported by the ToadsLC addon.",
+  "type": "object",
+  "required": ["format", "version", "exportedAt", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "toads-loot-priority" },
+    "version": { "const": 1 },
+    "exportedAt": { "type": "string", "minLength": 1 },
+    "guild": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "realm": { "type": "string" },
+        "region": { "type": "string" }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "offspecRollMax": { "type": "integer", "minimum": 2, "maximum": 99 },
+        "allOffspecMode": { "enum": ["ask", "priority", "highest"] },
+        "sessionSeconds": { "type": "integer", "minimum": 5, "maximum": 300 },
+        "votesVisibleTo": { "enum": ["council", "counts"] }
+      }
+    },
+    "council": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "members": { "type": "array", "items": { "$ref": "#/$defs/member" } }
+  },
+  "$defs": {
+    "class": { "enum": ["Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid"] },
+    "spec": {
+      "enum": [
+        "Warrior:Arms", "Warrior:Fury", "Warrior:Protection",
+        "Paladin:Holy", "Paladin:Protection", "Paladin:Retribution",
+        "Hunter:BeastMastery", "Hunter:Marksmanship", "Hunter:Survival",
+        "Rogue:Assassination", "Rogue:Combat", "Rogue:Subtlety",
+        "Priest:Discipline", "Priest:Holy", "Priest:Shadow",
+        "Shaman:Elemental", "Shaman:Enhancement", "Shaman:Restoration",
+        "Mage:Arcane", "Mage:Fire", "Mage:Frost",
+        "Warlock:Affliction", "Warlock:Demonology", "Warlock:Destruction",
+        "Druid:Balance", "Druid:Feral-Tank", "Druid:Feral-Cat", "Druid:Restoration"
+      ]
+    },
+    "token": {
+      "anyOf": [
+        { "$ref": "#/$defs/spec" },
+        { "enum": [
+          "ANY", "Warrior:DPS",
+          "ROLE:Tank", "ROLE:Healer", "ROLE:Caster", "ROLE:Melee", "ROLE:Ranged",
+          "Warrior:*", "Paladin:*", "Hunter:*", "Rogue:*", "Priest:*", "Shaman:*", "Mage:*", "Warlock:*", "Druid:*"
+        ] }
+      ]
+    },
+    "candidate": {
+      "oneOf": [
+        { "type": "object", "required": ["spec"], "additionalProperties": false,
+          "properties": { "spec": { "$ref": "#/$defs/token" } } },
+        { "type": "object", "required": ["player"], "additionalProperties": false,
+          "properties": { "player": { "type": "string", "minLength": 1 } } }
+      ]
+    },
+    "item": {
+      "type": "object",
+      "required": ["name", "priority"],
+      "additionalProperties": false,
+      "properties": {
+        "itemId": { "type": ["integer", "null"], "minimum": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "zone": { "type": ["string", "null"] },
+        "boss": { "type": ["string", "null"] },
+        "phase": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+        "priority": {
+          "type": "array",
+          "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/candidate" } }
+        },
+        "priorityText": { "type": ["string", "null"] },
+        "notes": { "type": ["string", "null"] }
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": ["name", "class"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "class": { "$ref": "#/$defs/class" },
+        "spec": {
+          "anyOf": [
+            { "$ref": "#/$defs/spec" },
+            { "enum": ["Warrior:*", "Paladin:*", "Hunter:*", "Rogue:*", "Priest:*", "Shaman:*", "Mage:*", "Warlock:*", "Druid:*"] }
+          ]
+        }
+      }
+    }
+  }
+}

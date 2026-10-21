@@ -1,0 +1,34 @@
+{
+  "format": "toads-loot-session",
+  "version": 1,
+  "exportedAt": "2026-10-25T21:14:02Z",
+  "exportedBy": "Poohtank-Spineshatter",
+  "addonVersion": "0.1.0",
+  "priorityVersion": "2026-10-21T13:40:00Z",
+  "sessions": [
+    {
+      "id": "2026-10-25T20:31:10Z-28830",
+      "itemId": 28830, "itemName": "Dragonspine Trophy",
+      "zone": "Gruul's Lair", "boss": "Gruul",
+      "openedAt": "2026-10-25T20:31:10Z", "closedAt": "2026-10-25T20:32:05Z",
+      "leader": "Poohtank",
+      "council": [ "Poohtank", "Hadur", "Anasazi", "Gally" ],
+      "candidates": [
+        { "player": "Anasazi",  "class": "Rogue",   "spec": "Rogue:Combat",       "response": "main",    "roll": 41, "max": 100, "tier": 1,    "note": "" },
+        { "player": "Gally",    "class": "Warrior", "spec": "Warrior:Fury",       "response": "main",    "roll": 97, "max": 100, "tier": 2,    "note": "Hyjal DPS check" },
+        { "player": "Hadur",    "class": "Shaman",  "spec": "Shaman:Enhancement", "response": "main",    "roll": 88, "max": 100, "tier": 4,    "note": "" },
+        { "player": "Poohtank", "class": "Paladin", "spec": "Paladin:Protection", "response": "offspec", "roll": 94, "max": 99,  "tier": null, "note": "ret set" },
+        { "player": "Anasazi",  "class": "Rogue",   "spec": "Rogue:Combat",       "response": "main",    "roll": 99, "max": 100, "tier": 1,    "ignored": "duplicate" }
+      ],
+      "passes": 14,
+      "votes": { "Poohtank": "Gally", "Hadur": "Anasazi", "Anasazi": "Anasazi", "Gally": "Anasazi" },
+      "proposal": { "by": "Poohtank", "player": "Gally", "reason": "Hyjal DPS check" },
+      "computedWinner": "Anasazi",
+      "computedBy": "priority",
+      "awardedTo": "Anasazi",
+      "awardedBy": "Poohtank",
+      "awardedVia": "votes",
+      "override": null
+    }
+  ]
+}

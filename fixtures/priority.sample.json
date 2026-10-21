@@ -1,0 +1,31 @@
+{
+  "format": "toads-loot-priority",
+  "version": 1,
+  "exportedAt": "2026-10-21T13:40:00Z",
+  "guild": { "name": "Toads", "realm": "Spineshatter", "region": "EU" },
+  "rules": { "offspecRollMax": 99, "allOffspecMode": "ask", "sessionSeconds": 30, "votesVisibleTo": "council" },
+  "council": [ "Poohtank", "Hadur", "Anasazi", "Gally" ],
+  "items": [
+    {
+      "itemId": 28830,
+      "name": "Dragonspine Trophy",
+      "zone": "Gruul's Lair", "boss": "Gruul", "phase": 1,
+      "priority": [
+        [ { "spec": "Hunter:BeastMastery" }, { "spec": "Rogue:*" } ],
+        [ { "spec": "Warrior:Fury" } ],
+        [ { "spec": "Warrior:Arms" } ],
+        [ { "spec": "Shaman:Enhancement" }, { "spec": "Paladin:Retribution" } ],
+        [ { "spec": "Hunter:Survival" } ],
+        [ { "spec": "Druid:Feral-Cat" } ]
+      ],
+      "priorityText": "BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty",
+      "notes": ""
+    }
+  ],
+  "members": [
+    { "name": "Anasazi", "class": "Rogue", "spec": "Rogue:Combat" },
+    { "name": "Gally", "class": "Warrior", "spec": "Warrior:Fury" },
+    { "name": "Hadur", "class": "Shaman", "spec": "Shaman:Enhancement" },
+    { "name": "Poohtank", "class": "Paladin", "spec": "Paladin:Protection" }
+  ]
+}
