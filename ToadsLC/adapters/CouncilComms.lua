@@ -22,8 +22,10 @@ local function groupChannel()
   if IsInGroup() then return "PARTY" end
 end
 
-function Comms.init(onMessage)
-  Comms.onMessage = onMessage
+-- init(onMessage(msg, sender, trusted, signed), onSealed(sender)): onSealed is told about
+-- council traffic sealed under a password this client does not hold.
+function Comms.init(onMessage, onSealed)
+  Comms.onMessage, Comms.onSealed = onMessage, onSealed
   local register = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix) or RegisterAddonMessagePrefix
   register(PREFIX)
   frame:RegisterEvent("CHAT_MSG_ADDON")
@@ -62,10 +64,13 @@ frame:SetScript("OnEvent", function(_, _, prefix, text, _, sender)
   if prefix ~= PREFIX then return end
   sender = ns.Roster.normalize(sender)
   if ns.Priority.nameKey(sender) == ns.Priority.nameKey(ns.Roster.me()) then return end -- own echo
-  local msg, trusted = wire.unpack(sender, text)
+  local msg, trusted, signed = wire.unpack(sender, text)
+  if msg == nil and trusted == "sealed for another password" and Comms.onSealed then
+    pcall(Comms.onSealed, sender)
+  end
   if type(msg) == "table" and Comms.onMessage then
     -- a message from another client must never break this one
-    local ok, err = pcall(Comms.onMessage, msg, sender, trusted)
+    local ok, err = pcall(Comms.onMessage, msg, sender, trusted, signed)
     if not ok and ns.Chat then ns.Chat.debug("dropped a message from " .. sender .. ": " .. tostring(err)) end
   end
 end)

@@ -43,8 +43,9 @@ describe("Wire", function()
     local text = Wire.seal(vote, "Hadur", secret)
     assert.matches("^T1|e|", text)
     assert.is_nil(text:find("Anasazi", 1, true)) -- the vote is not readable on the wire
-    local msg, trusted = Wire.open(text, "Hadur-Spineshatter", secret)
+    local msg, trusted, signed = Wire.open(text, "Hadur-Spineshatter", secret)
     assert.is_true(trusted)
+    assert.is_true(signed)
     assert.are.equal("Anasazi", msg.p)
   end)
 
@@ -75,8 +76,11 @@ describe("Wire", function()
     local msg, trusted = Wire.open(text, "Raider", secret)
     assert.are.equal("VOTE", msg.t)
     assert.is_false(trusted)
-    trusted = select(2, Wire.open(text, "Raider", nil))
+    local signed
+    msg, trusted, signed = Wire.open(text, "Raider", nil)
+    assert.are.equal("VOTE", msg.t)
     assert.is_true(trusted)
+    assert.is_false(signed)
   end)
 
   it("packs into chunks under the addon message limit and back", function()
@@ -90,5 +94,20 @@ describe("Wire", function()
     end
     assert.are.equal(big.re, msg.re)
     assert.is_true(trusted)
+  end)
+
+  it("gets a full 40-player STATE through once encrypted", function()
+    local a = Wire.new({ secret = function() return secret end, clock = function() return 0 end })
+    local b = Wire.new({ secret = function() return secret end, clock = function() return 0 end })
+    local cands = {}
+    for i = 1, 40 do
+      cands[i] = { p = "Player" .. i, c = "Rogue", sp = "Combat", r = "main", n = string.rep("n", 255), ro = i, mx = 100 }
+    end
+    local state = { t = "STATE", s = "x", cands = cands }
+    local chunks = a.pack(state, "Poohtank")
+    assert.is_true(#chunks > 64)
+    local msg
+    for _, chunk in ipairs(chunks) do msg = b.unpack("Poohtank", chunk) or msg end
+    assert.are.equal(40, #msg.cands)
   end)
 end)

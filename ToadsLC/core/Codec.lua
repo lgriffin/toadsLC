@@ -516,7 +516,7 @@ function Codec.wireChunks(text, msgId)
   return out
 end
 
-Codec.MAX_PARTS = 64        -- about 15 KB, far above the largest STATE
+Codec.MAX_PARTS = 128       -- about 29 KB: a full STATE, encrypted and base64'd, fits easily
 Codec.MAX_PENDING = 100     -- incomplete messages held at once, across senders
 Codec.PENDING_SECONDS = 30  -- an incomplete message older than this is dropped
 

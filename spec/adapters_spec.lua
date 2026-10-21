@@ -176,6 +176,14 @@ describe("addon in a fake client", function()
     assert.is_nil(W.ns.App.secret())
   end)
 
+  it("forgets the raid password after 12 hours without a reload", function()
+    W.slash("begin frog pond 42")
+    assert.is_not_nil(W.ns.App.secret())
+    _G.ToadsLCDB.settings.raid.at = W.ns.App.now() - 12 * 3600 - 1
+    assert.is_nil(W.ns.App.secret())
+    assert.is_nil(_G.ToadsLCDB.settings.raid)
+  end)
+
   it("sends HELLO on /tlc join", function()
     W.slash("join frog pond 42")
     W.flushComms()

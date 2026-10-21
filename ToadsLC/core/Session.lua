@@ -258,7 +258,8 @@ function Session:apply(m, sender)
     self.lastSeq[k] = m.q
   end
   local changed = fn(self, m, sender)
-  if m.v and fromLeader and m.v > (self.version or 0) then self.version = m.v end
+  -- only a change takes a version, so a rejected action never uses one up
+  if changed and m.v and fromLeader and m.v > (self.version or 0) then self.version = m.v end
   return changed
 end
 
@@ -448,6 +449,9 @@ function Session:stateMsg(now)
   local votes = {}
   for o, c in pairs(self.votes) do votes[#votes + 1] = { o, c } end
   table.sort(votes, function(a, b) return a[1] < b[1] end)
+  local seqs = {}
+  for o, q in pairs(self.lastSeq or {}) do seqs[#seqs + 1] = { o, q } end
+  table.sort(seqs, function(a, b) return a[1] < b[1] end)
   local cands = {}
   for i, e in ipairs(self.candidates) do
     cands[i] = { p = e.player, c = e.class, sp = e.spec, r = e.response, n = e.note,
@@ -459,7 +463,7 @@ function Session:stateMsg(now)
           boss = self.boss, leader = self.leader, council = self.council, rules = self.rules,
           mode = self.mode, priorityVersion = self.priorityVersion },
     oa = self.openedAt, left = self:timeLeft(now), ca = self.closedAt, ph = self.phase,
-    cands = cands, passed = passed, votes = votes, prop = self.proposal, restrict = restrict,
+    cands = cands, passed = passed, votes = votes, sq = seqs, prop = self.proposal, restrict = restrict,
     cw = self.computedWinner, cb = self.computedBy, hr = self.listRoll,
     aw = self.phase == "done" and { p = self.awardedTo, by = self.awardedBy, via = self.awardedVia,
                                     ov = self.override } or nil,
@@ -484,6 +488,8 @@ function Session.fromState(m, item, now)
   end
   for _, k in ipairs(m.passed or {}) do s.passed[k] = true end
   for _, v in ipairs(m.votes or {}) do s.votes[v[1]] = v[2] end
+  s.lastSeq = {}
+  for _, v in ipairs(m.sq or {}) do s.lastSeq[v[1]] = v[2] end
   if m.prop and m.prop ~= Codec.null then s.proposal = m.prop end
   if m.restrict and m.restrict ~= Codec.null then
     s.restrict = {}
@@ -618,7 +624,9 @@ end
 function Registry:act(s, msg, what)
   if not msg then return {} end
   if s:isLeader(self.ctx.me) then msg.v = (s.version or 0) + 1 end
-  if s:apply(msg, self.ctx.me) then self:changed(s, what or msg.t) end
+  -- an action this client rejects is not sent: it would only use up a version elsewhere
+  if not s:apply(msg, self.ctx.me) then return {} end
+  self:changed(s, what or msg.t)
   return out({}, msg)
 end
 
@@ -677,7 +685,21 @@ end
 
 -- hello(): an officer checking their council password against the raid's
 function Registry:hello()
+  self.helloAt = self:now()
   return out({}, { t = "HELLO" })
+end
+
+Registry.NOTICE_EVERY = 60 -- seconds between repeats of the same notice about the same player
+Registry.HELLO_WAIT = 10   -- seconds /tlc join waits for the raid leader's answer
+
+-- notice(kind, name) -> true when this player was told (once a minute at most per kind and name)
+function Registry:notice(kind, name)
+  self.noticedAt = self.noticedAt or {}
+  local k, now = kind .. "|" .. nameKey(name or ""), self:now()
+  if self.noticedAt[k] and now - self.noticedAt[k] < Registry.NOTICE_EVERY then return false end
+  self.noticedAt[k] = now
+  if self.ctx.notify then self.ctx.notify(kind, name) end
+  return true
 end
 
 function Registry:setSpec(id, player, spec)
@@ -716,6 +738,10 @@ end
 -- tick(): close the response window on sessions I lead whose timer ran out.
 function Registry:tick()
   local now, msgs = self:now(), {}
+  if self.helloAt and now - self.helloAt >= Registry.HELLO_WAIT then
+    self.helloAt = nil
+    self:notice("noanswer")
+  end
   for _, id in ipairs(self.order) do
     local s = self.sessions[id]
     if s.phase == "open" and s:isLeader(self.ctx.me) and now >= s.closesAt then
@@ -767,8 +793,9 @@ local FIELDS = {
   STATE_REQUEST = {},
   HELLO = {},
   WELCOME = {},
+  MISMATCH = {},
   STATE = { s = "str", v = "int?", o = "tbl", oa = "int", left = "num?", ca = "int?", ph = "str",
-            cands = "tbl?", passed = "names?", votes = "tbl?", prop = "tbl?", restrict = "names?",
+            cands = "tbl?", passed = "names?", votes = "tbl?", sq = "tbl?", prop = "tbl?", restrict = "names?",
             cw = "str?", cb = "str?", hr = "str?", aw = "tbl?" },
 }
 
@@ -813,6 +840,9 @@ local function checkState(m)
   for _, v in ipairs(m.votes or {}) do
     if type(v) ~= "table" or type(v[1]) ~= "string" or type(v[2]) ~= "string" then return false end
   end
+  for _, v in ipairs(m.sq or {}) do
+    if type(v) ~= "table" or type(v[1]) ~= "string" or type(v[2]) ~= "number" then return false end
+  end
   if m.prop and not checkFields(m.prop, { by = "str", player = "str", reason = "str?" }) then return false end
   if m.aw and not checkFields(m.aw, { p = "str?", by = "str?", via = "str?", ov = "tbl?" }) then return false end
   return true
@@ -847,32 +877,45 @@ end
 
 Registry.STATE_RETRY = 10 -- seconds between snapshot requests for a session we have not seen
 
--- handle(msg, sender): an addon message from another client.
--- trusted: the message carried a valid signature for this client's council password (or
--- no password is set here). With a password set, council traffic must be trusted; raiders
--- without the password still follow the public open, close and award.
-function Registry:handle(m, sender, trusted)
+-- handle(msg, sender, trusted, signed): an addon message from another client.
+-- trusted: the message carried a valid signature for this client's council password.
+-- signed: it carried a signature at all. With no password set here, unsigned traffic is
+-- trusted and signed traffic is not (it belongs to a protected council we have not joined).
+-- With a password set, council traffic must be trusted; raiders without the password
+-- still follow the public open, close and award.
+function Registry:handle(m, sender, trusted, signed)
   local me = self.ctx.me
   if not Session.valid(m) then return {} end
   local secured = self.ctx.secured and self.ctx.secured() or false
-  if not secured then trusted = true end
-  local notify = self.ctx.notify or function() end
+  if not secured then trusted = not signed end
 
   if m.t == "HELLO" then
     if not (self.ctx.hosting and self.ctx.hosting()) then return {} end
     if trusted then return out({}, { t = "WELCOME" }, "WHISPER", sender) end
-    notify("mismatch", sender)
-    return {}
+    -- tell the joiner (and ourselves), but not more than once a minute per name
+    if not self:notice("mismatch", sender) then return {} end
+    return out({}, { t = "MISMATCH" }, "WHISPER", sender)
   end
 
-  if m.t == "WELCOME" then
-    if trusted then notify("welcome", sender) end
-    return {}
+  -- answers to our own /tlc join only
+  if m.t == "WELCOME" or m.t == "MISMATCH" then
+    if not secured or not self.helloAt then return {} end
+    if m.t == "MISMATCH" then
+      self.helloAt = nil
+      self:notice("mismatch_self", sender)
+      return {}
+    end
+    if not trusted then return {} end
+    self.helloAt = nil
+    self:notice("welcome", sender)
+    -- sessions we only saw as a viewer before the password was right
+    return out({}, { t = "STATE_REQUEST" }, "WHISPER", sender)
   end
 
   if m.t == "SESSION_OPEN" then
     if self.sessions[m.s] then return {} end
-    -- an unsigned open, with a password set here, makes us a viewer, never council
+    if not secured and signed and contains(m.co, me) then self:notice("needjoin", sender) end
+    -- an open we cannot verify makes us a viewer, never council
     local s = Session.new({ id = m.s, itemId = m.it, itemName = m.nm, itemLink = m.lk, zone = m.z, boss = m.b,
                             leader = sender, council = trusted and m.co or {}, rules = m.ru, mode = m.md, seconds = m.sec,
                             priorityVersion = m.pv, now = self:now(),
@@ -926,7 +969,12 @@ function Registry:handle(m, sender, trusted)
   -- Raiders outside the council only follow the session's open, close and award.
   local public = m.t == "SESSION_CLOSE" or m.t == "AWARD" or m.t == "UNAWARD" or m.t == "REROLL"
   if not public and not s:isCouncil(me) then return {} end
-  if s:isCouncil(me) and not trusted then return {} end
+  if s:isCouncil(me) and not trusted then
+    if s:isLeader(me) and s:isCouncil(sender) and (m.t == "VOTE" or m.t == "PROPOSE") then
+      self:notice("untrusted", sender)
+    end
+    return {}
+  end
   if m.t == "RESPONSE" and m.k and m.k > #s.candidates + 1 then return {} end
   if s:apply(m, sender) then self:changed(s, m.t) end
   return {}

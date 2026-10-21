@@ -81,16 +81,17 @@ function Wire.seal(msg, sender, secret, clock)
   return table.concat({ "T1", kind, nonce, mac(secret, who, kind, nonce, body), body }, "|")
 end
 
--- open(text, sender, secret) -> msg, trusted | nil, reason
+-- open(text, sender, secret) -> msg, trusted, signed | nil, reason
 -- trusted is true when the message carries a valid signature for our password, or when
--- no password is set on this client (nothing to check against).
+-- no password is set on this client (nothing to check against); signed is true when it
+-- carries a signature at all.
 function Wire.open(text, sender, secret)
   if type(text) ~= "string" then return nil, "not a string" end
   local kind, nonce, tag, body = text:match("^T1|([pe])|([%x]+)|(%x+)|(.*)$")
   if not kind then
     local msg, err = Codec.decode(text)
     if not msg then return nil, err end
-    return msg, secret == nil
+    return msg, secret == nil, false
   end
   local who = Priority.nameKey(sender)
   local valid = secret ~= nil and Crypto.equal(tag, mac(secret, who, kind, nonce, body))
@@ -102,7 +103,7 @@ function Wire.open(text, sender, secret)
   end
   local msg, err = Codec.decode(body)
   if not msg then return nil, err end
-  return msg, valid or secret == nil
+  return msg, valid or secret == nil, true
 end
 
 ---------------------------------------------------------------------------
@@ -119,7 +120,7 @@ function Wire.new(opts)
     return Codec.wireChunks(Wire.seal(msg, me, opts.secret(), opts.clock), tostring(w.seq))
   end
 
-  -- unpack(sender, chunk) -> msg, trusted once every chunk has arrived
+  -- unpack(sender, chunk) -> msg, trusted, signed once every chunk has arrived
   function w.unpack(sender, chunk)
     local text, err = w.asm.feed(sender, chunk)
     if not text then return nil, err end

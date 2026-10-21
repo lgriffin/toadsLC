@@ -34,8 +34,8 @@ local function newRaid(ns, names, priorities, secrets)
       for name, c in pairs(raid.clients) do
         local deliver = (m.dist == "RAID" and name ~= m.from) or (m.dist == "WHISPER" and Priority.nameKey(m.target) == Priority.nameKey(name))
         if deliver then
-          local msg, trusted = c.wire.unpack(m.from, m.chunk)
-          if msg then raid.send(name, c.reg:handle(msg, m.from, trusted)) end
+          local msg, trusted, signed = c.wire.unpack(m.from, m.chunk)
+          if msg then raid.send(name, c.reg:handle(msg, m.from, trusted, signed)) end
         end
       end
     end
@@ -480,19 +480,108 @@ describe("Session with a raid password", function()
     assert.are.equal(0, #s.candidates)
   end)
 
-  it("answers HELLO with WELCOME only for the same password", function()
-    local secrets = keyed({ "Poohtank", "Hadur" }, "frog-pond-42")
-    secrets.Gally = ns.Wire.secret(ns.Wire.keyFromPassword("typo", 10))
-    local raid = newRaid(ns, { "Poohtank", "Hadur", "Gally" }, priorities, secrets)
+  local function listen(raid)
     local heard = {}
     for name, c in pairs(raid.clients) do
       c.reg.ctx.hosting = function() return name == "Poohtank" end
-      c.reg.ctx.notify = function(kind, who) heard[#heard + 1] = name .. ":" .. kind .. ":" .. who end
+      c.reg.ctx.notify = function(kind, who) heard[#heard + 1] = name .. ":" .. kind .. ":" .. (who or "") end
     end
+    return heard
+  end
+
+  it("answers HELLO with WELCOME for the same password and tells both sides about a mismatch", function()
+    local secrets = keyed({ "Poohtank", "Hadur" }, "frog-pond-42")
+    secrets.Gally = ns.Wire.secret(ns.Wire.keyFromPassword("typo", 10))
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Gally" }, priorities, secrets)
+    local heard = listen(raid)
     raid.act("Hadur", "hello")
     raid.act("Gally", "hello")
+    raid.act("Gally", "hello") -- told once a minute at most
     table.sort(heard)
-    assert.are.same({ "Hadur:welcome:Poohtank", "Poohtank:mismatch:Gally" }, heard)
+    assert.are.same({ "Gally:mismatch_self:Poohtank", "Hadur:welcome:Poohtank", "Poohtank:mismatch:Gally" }, heard)
+  end)
+
+  it("says so when no raid leader answers /tlc join", function()
+    local raid = newRaid(ns, { "Poohtank", "Gally" }, priorities, keyed({ "Gally" }, "frog-pond-42"))
+    local heard = listen(raid)
+    raid.clients.Poohtank.reg.ctx.hosting = function() return false end
+    raid.act("Gally", "hello")
+    raid.clock = raid.clock + 10
+    raid.act("Gally", "tick")
+    assert.are.same({ "Gally:noanswer:" }, heard)
+  end)
+
+  it("ignores a WELCOME it did not ask for", function()
+    local raid = newRaid(ns, { "Poohtank", "Gally" }, priorities, keyed({ "Poohtank" }, "frog-pond-42"))
+    local heard = listen(raid)
+    raid.send("Poohtank", { { msg = { t = "WELCOME" }, dist = "WHISPER", target = "Gally" } })
+    raid.send("Raider", { { msg = { t = "WELCOME" }, dist = "WHISPER", target = "Poohtank" } })
+    raid.flush()
+    assert.are.same({}, heard)
+  end)
+
+  it("lets an officer who joins late with the right password into a session they saw as a viewer", function()
+    local secrets = keyed(council, "frog-pond-42")
+    local key = secrets.Gally
+    secrets.Gally = nil
+    local raid, id = setup(secrets)
+    local heard = listen(raid)
+    raid.act("Anasazi", "respond", id, "main", "secret note")
+    raid.act("Hadur", "vote", id, "Anasazi")
+    assert.are.equal(0, #raid.clients.Gally.reg:get(id).council)
+    raid.clients.Gally.secret = key
+    raid.act("Gally", "hello")
+    local s = raid.clients.Gally.reg:get(id)
+    assert.is_true(s:isCouncil("Gally"))
+    assert.are.equal("secret note", s:entryFor("Anasazi").note)
+    assert.are.equal("Anasazi", s.votes.hadur)
+    assert.are.same({ "Gally:welcome:Poohtank" }, heard)
+  end)
+
+  it("tells an officer without the password to /tlc join when a protected session opens", function()
+    local secrets = keyed(council, "frog-pond-42")
+    secrets.Gally = nil
+    local raid = newRaid(ns, { "Poohtank", "Gally", "Raider" }, priorities, secrets)
+    local heard = listen(raid)
+    raid.act("Poohtank", "open", { itemId = 28830, itemName = "Dragonspine Trophy", council = council })
+    assert.are.same({ "Gally:needjoin:Poohtank" }, heard) -- not the raider, who is not on the council
+  end)
+
+  it("tells the leader when a council member votes without the password", function()
+    local secrets = keyed(council, "frog-pond-42")
+    secrets.Gally = nil
+    local raid, id = setup(secrets)
+    local heard = listen(raid)
+    raid.roll("Anasazi", 41)
+    raid.send("Gally", { { msg = { t = "VOTE", s = id, p = "Anasazi", q = 1 }, dist = "RAID" } })
+    raid.flush()
+    table.sort(heard)
+    assert.are.same({ "Poohtank:untrusted:Gally" }, heard)
+  end)
+
+  it("does not let an old vote replace the one a snapshot carried", function()
+    local raid, id = setup(keyed(council, "frog-pond-42"))
+    raid.roll("Anasazi", 41)
+    raid.roll("Gally", 97)
+    local first = raid.act("Hadur", "vote", id, "Anasazi")
+    raid.act("Hadur", "vote", id, "Gally")
+    local c = raid.clients.Anasazi
+    c.reg.sessions, c.reg.order = {}, {}
+    raid.act("Anasazi", "requestState")
+    raid.send("Hadur", first) -- the older vote arrives late
+    raid.flush()
+    assert.are.equal("Gally", c.reg:get(id).votes.hadur)
+  end)
+
+  it("does not send a leader action it rejects, so no version is used up", function()
+    local raid, id = setup(keyed(council, "frog-pond-42"))
+    local lead = raid.clients.Poohtank.reg:get(id)
+    local v = lead.version or 0
+    assert.are.same({}, raid.act("Poohtank", "vote", id, "Nobody"))
+    assert.are.equal(v, lead.version or 0)
+    raid.roll("Anasazi", 41)
+    raid.act("Poohtank", "close", id)
+    assert.are.equal("voting", raid.clients.Hadur.reg:get(id).phase)
   end)
 
   it("ignores a replayed leader message", function()

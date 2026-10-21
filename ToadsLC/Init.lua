@@ -311,8 +311,12 @@ end
 local RAID_MAX_AGE = 12 * 3600 -- a raid password is forgotten after a night
 local secretCache
 
+-- secret() -> the raid password's keys, or nil (none set, or set more than 12 hours ago)
 function App.secret()
   local r = Store.settings().raid
+  if r and App.now() - (r.at or 0) > RAID_MAX_AGE then
+    Store.settings().raid, r, secretCache = nil, nil, nil
+  end
   if not r then return nil end
   if not secretCache or secretCache.hex ~= r.key then
     local s = ns.Wire.secret(ns.Crypto.unhex(r.key))
@@ -350,10 +354,19 @@ function App.endRaid()
   Chat.print("Raid password cleared. Council traffic is unsigned again.")
 end
 
+local NOTICES = {
+  welcome = "Raid password matches NAME's. You're in the council traffic.",
+  mismatch = "NAME tried to join with a different raid password.",
+  mismatch_self = "Your raid password doesn't match NAME's. Check it with them, then /tlc join <password> again.",
+  noanswer = "No raid leader answered. Check they typed /tlc begin, then /tlc join <password> again.",
+  needjoin = "NAME's loot council uses a raid password. Type /tlc join <password> to see and vote in it.",
+  untrusted = "NAME is on the council but hasn't joined with the raid password, so their votes are ignored.",
+  sealed = "NAME sent council traffic under a different raid password. Compare /tlc status fingerprints.",
+}
+
 local function start()
   Store.init()
-  local raid = Store.settings().raid
-  if raid and App.now() - (raid.at or 0) > RAID_MAX_AGE then Store.settings().raid = nil end
+  App.secret() -- forgets a password from an earlier night
   loginTime = App.now()
   App.registry = Session.newRegistry({
     me = Roster.me(),
@@ -362,16 +375,14 @@ local function start()
     who = Roster.who,
     onChange = onChange,
     secured = function() return App.secret() ~= nil end,
-    hosting = function() local r = Store.settings().raid; return r ~= nil and r.hosting end,
+    hosting = function() return App.secret() ~= nil and Store.settings().raid.hosting end,
     notify = function(kind, name)
-      if kind == "welcome" then
-        Chat.print("Raid password matches " .. name .. "'s. You're in the council traffic.")
-      elseif kind == "mismatch" then
-        Chat.print(name .. " tried to join with a different raid password.")
-      end
+      local line = NOTICES[kind]
+      if line then Chat.print((line:gsub("NAME", name or ""))) end
     end,
   })
-  Comms.init(function(msg, sender, trusted) send(App.registry:handle(msg, sender, trusted)) end)
+  Comms.init(function(msg, sender, trusted, signed) send(App.registry:handle(msg, sender, trusted, signed)) end,
+    function(sender) App.registry:notice("sealed", sender) end)
   ns.Tooltip.init()
   ns.Commands.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do

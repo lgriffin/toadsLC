@@ -90,6 +90,8 @@ CI runs all three on every push (`.github/workflows/test.yml`).
   is stored, for 12 hours or until `/tlc end`), and responses, notes, votes, proposals and
   state are encrypted. Raiders without it still see the open, close and award, but cannot
   verify them, so a forged public message could at worst show a raider a fake loot frame.
+  An officer who skipped `/tlc join` sees sessions as a viewer and is told to join; once
+  they do, the leader sends them the current state.
 - **Druid ferals.** Talents cannot tell bear from cat, so an uninspected feral is matched
   on `Druid:*` until the site's `members[]` names the spec or the LC sets it from the frame.
 - Open questions from the design doc (token set, bare "Priest", tier tokens, who may start
