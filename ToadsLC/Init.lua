@@ -284,6 +284,32 @@ function App.status()
   end
 end
 
+-- debug(itemText): what the tooltip needs, for "the tooltip shows no priorities"
+function App.debug(itemText)
+  local version, build, _, interface = GetBuildInfo()
+  Chat.print(string.format("Client %s (%s), interface %s, project %s; ToadsLC %s", tostring(version), tostring(build),
+    tostring(interface), tostring(WOW_PROJECT_ID), App.VERSION))
+  local T = ns.Tooltip
+  Chat.print(string.format("Tooltip hooks: %s%s; priorities %s", #T.hooks > 0 and table.concat(T.hooks, ", ") or "none",
+    T.dataProcessor and " + TooltipDataProcessor" or "", Store.settings().tooltip and "on" or "off (/tlc tooltip on)"))
+  local p = Store.priorities()
+  Chat.print(p and string.format("List: %d items, dated %s", p.count, dateOf(p.exportedAt))
+    or "List: none imported. /tlc import")
+  local last = T.last
+  if last then
+    Chat.print(string.format("Last item hovered (%d so far): %s (%d) on %s: %s", T.seen, last.name or "?", last.itemId,
+      last.tooltip, last.shown and "Priority block shown" or ("not shown, " .. (last.why or "?"))))
+  else
+    Chat.print("No item tooltip seen since login. Hover an item, then /tlc debug again.")
+  end
+  if itemText and itemText ~= "" then
+    local itemId, name = parseItem(itemText)
+    local item = Priority.lookup(p, itemId, name)
+    Chat.print(string.format("%s (%s): %s", name or "?", tostring(itemId),
+      item and ("on the list: " .. (Priority.text(item) or "")) or "not on the list"))
+  end
+end
+
 function App.history()
   local since = loginTime - 6 * 3600
   local recs = Store.since(since)
