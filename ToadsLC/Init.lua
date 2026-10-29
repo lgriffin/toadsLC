@@ -151,7 +151,7 @@ function App.respond(id, response, note)
   local s = App.registry:get(id)
   if not s then return end
   send(App.registry:respond(id, response, note, Roster.specOf("player")))
-  if response == "main" then RandomRoll(1, 100)
+  if response == "bis" or response == "main" then RandomRoll(1, 100)
   elseif response == "offspec" then RandomRoll(1, s.rules.offspecRollMax) end
 end
 

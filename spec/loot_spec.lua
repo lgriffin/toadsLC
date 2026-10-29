@@ -417,7 +417,7 @@ describe("/tlc loot all", function()
     assert.matches("3 items", cand.title:GetText())
     assert.is_true(cand.rows[3]:IsShown())
     -- the leader answers the second item, then the first; each roll lands on its own item
-    cand.rows[2].main.scripts.OnClick(cand.rows[2].main)
+    cand.rows[2].up.scripts.OnClick(cand.rows[2].up)
     assert.is_false(cand.rows[3]:IsShown()) -- answered items leave the window
     cand.rows[1].off.scripts.OnClick(cand.rows[1].off)
     W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 81 (1-100)")
@@ -476,8 +476,8 @@ describe("/tlc loot all across a raid of clients", function()
     local cand = rogue.env.ToadsLCCandidateFrame
     assert.is_true(cand.rows[3]:IsShown())
     local third, first = cand.rows[3].session.id, cand.rows[1].session.id
-    cand.rows[3].main.scripts.OnClick(cand.rows[3].main)
-    cand.rows[1].main.scripts.OnClick(cand.rows[1].main)
+    cand.rows[3].bis.scripts.OnClick(cand.rows[3].bis)
+    cand.rows[1].up.scripts.OnClick(cand.rows[1].up)
     assert.are.same({ { 1, 100 }, { 1, 100 } }, rogue.rolls)
     -- the roll lines reach the leader before the whispers do
     leader:fire("CHAT_MSG_SYSTEM", "Anasazi rolls 64 (1-100)")
@@ -486,5 +486,7 @@ describe("/tlc loot all across a raid of clients", function()
     local reg = leader.ns.App.registry
     assert.are.equal(64, reg:get(third):entryFor("Anasazi").roll)
     assert.are.equal(5, reg:get(first):entryFor("Anasazi").roll)
+    assert.are.equal("bis", reg:get(third):entryFor("Anasazi").response) -- BiS survives the roll landing first
+    assert.are.equal("main", reg:get(first):entryFor("Anasazi").response)
   end)
 end)

@@ -25,6 +25,25 @@ describe("Resolver", function()
     assert.is_true(r.ranked[2].offspec)
   end)
 
+  it("BiS trumps Upgrade whatever the tier: Gally's tier 2 BiS 12 beats Anasazi's tier 1 Upgrade 97", function()
+    local gally = e("Gally", "Warrior", "Warrior:Fury", 12)
+    gally.response = "bis"
+    local anasazi = e("Anasazi", "Rogue", "Rogue:Combat", 97)
+    anasazi.response = "main"
+    local r = R.resolve(item, { anasazi, gally }, rules)
+    assert.are.equal("Gally", r.winner.player)
+    assert.is_true(r.ranked[1].bis)
+    assert.is_false(r.ranked[2].bis)
+  end)
+
+  it("ranks two BiS rolls by tier then roll, and never lifts an off-spec roll", function()
+    local function bis(...) local x = e(...); x.response = "bis"; return x end
+    local r = R.resolve(item, { bis("Gally", "Warrior", "Warrior:Fury", 99), bis("Anasazi", "Rogue", "Rogue:Combat", 3),
+                                bis("Poohtank", "Paladin", "Paladin:Protection", 98, 99) }, rules)
+    assert.are.same({ "Anasazi", "Gally", "Poohtank" }, { r.ranked[1].player, r.ranked[2].player, r.ranked[3].player })
+    assert.is_false(r.ranked[3].bis)
+  end)
+
   it("When every response is off-spec, shows two list-says rows and awards neither", function()
     local r = R.resolve(item, { e("Poohtank", "Paladin", "Paladin:Protection", 94, 99), e("Gally", "Warrior", "Warrior:Fury", 12, 99) }, rules)
     assert.is_true(r.allOffspec)
