@@ -46,24 +46,38 @@ function Tooltip.lines(item, viewer, rollLeft, offspecMax)
   return out
 end
 
+-- what the hooks saw, for /tlc debug: hooks = tooltip names hooked, last = the last item hovered
+Tooltip.hooks = {}
+Tooltip.dataProcessor = false
+Tooltip.seen = 0
+Tooltip.last = nil
+
+-- skip(tooltip, itemId) -> reason the block is left off, or nil
 local function skip(tooltip, itemId)
-  if not ns.Store.settings().tooltip then return true end
+  if not ns.Store.settings().tooltip then return "tooltip off (/tlc tooltip on)" end
   if GetItemInfoInstant then
     local _, _, _, _, _, classId = GetItemInfoInstant(itemId)
-    if classId == 9 then return true end -- recipes
+    if classId == 9 then return "recipe" end
   end
-  local owner = tooltip:GetOwner()
+  local owner = tooltip.GetOwner and tooltip:GetOwner()
   local ownerName = owner and owner.GetName and owner:GetName()
-  return ownerName ~= nil and ownerName:find("^Quest") ~= nil
+  if ownerName ~= nil and ownerName:find("^Quest") ~= nil then return "quest reward" end
 end
 
-local function onItem(tooltip)
+local function onItem(tooltip, data)
   local name, link = tooltip:GetItem()
-  if not link then return end
-  local itemId = tonumber(link:match("item:(%d+)"))
-  if not itemId or skip(tooltip, itemId) then return end
+  local itemId = tonumber(link and link:match("item:(%d+)")) or (data and tonumber(data.id))
+  if not itemId then return end
+  Tooltip.seen = Tooltip.seen + 1
+  local last = { itemId = itemId, name = name, tooltip = tooltip.GetName and tooltip:GetName() or "?" }
+  Tooltip.last = last
+  last.why = skip(tooltip, itemId)
+  if last.why then return end
   local item = Priority.lookup(ns.Store.priorities(), itemId, name)
-  if not item then return end
+  if not item then
+    last.why = ns.Store.priorities() and "not on the imported list" or "no list imported"
+    return
+  end
   local s = ns.App and ns.App.openSessionFor(itemId)
   local left = s and s:timeLeft(ns.App.now())
   local me = ns.Roster.specOf("player")
@@ -72,17 +86,27 @@ local function onItem(tooltip)
   tooltip:AddLine(" ")
   for _, line in ipairs(lines) do tooltip:AddLine(line) end
   tooltip:Show()
+  last.shown = true
 end
 
+-- The TBC Classic client ships TooltipDataProcessor and Enum.TooltipDataType, but its
+-- GameTooltip does not run on tooltip data, so post calls never fire there: hook
+-- OnTooltipSetItem wherever the tooltip has it, and use the data processor only for
+-- tooltips without it (clients where OnTooltipSetItem is gone).
 function Tooltip.init()
-  if TooltipDataProcessor and Enum and Enum.TooltipDataType then
-    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
-      if tooltip.GetItem then onItem(tooltip) end
-    end)
-    return
-  end
+  local hooked = {}
   for _, name in ipairs({ "GameTooltip", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2" }) do
     local tt = _G[name]
-    if tt and tt.HookScript then tt:HookScript("OnTooltipSetItem", onItem) end
+    if tt and tt.HookScript and tt.HasScript and tt:HasScript("OnTooltipSetItem") then
+      tt:HookScript("OnTooltipSetItem", function(self) onItem(self) end)
+      hooked[tt] = true
+      Tooltip.hooks[#Tooltip.hooks + 1] = name
+    end
+  end
+  if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+      if not hooked[tooltip] and tooltip.GetItem then onItem(tooltip, data) end
+    end)
+    Tooltip.dataProcessor = true
   end
 end

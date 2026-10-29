@@ -186,6 +186,7 @@ stops it.
 | `/tlc help` | anyone | list the commands |
 | `/tlc status` | anyone | imported list and its date, sessions waiting for export, raid password fingerprint |
 | `/tlc tooltip on` / `off` | anyone | show or hide the Priority block on tooltips |
+| `/tlc debug [item]` | anyone | client build, tooltip hooks, the list, and why the last item you hovered did or didn't get a Priority block |
 | `/tlc import` | officers | paste the priority list from the site |
 | `/tlc import undo` | officers | go back to the previous list |
 | `/tlc begin <password>` | raid leader | set tonight's raid password and lead the council |
@@ -222,7 +223,9 @@ You're on a different game client (Era, Wrath or retail). Toads LC v1 is TBC onl
 
 **The tooltip shows no priorities.**
 Only clients that imported the list show it: `/tlc status` says whether you have one. Also
-check `/tlc tooltip on`. Items not on the list have no Priority block.
+check `/tlc tooltip on`. Items not on the list have no Priority block. Still nothing? Hover
+the item, then type `/tlc debug` (or `/tlc debug <item link>`): it says which tooltips the
+addon hooked and why that item got no block. Paste its output when you report the problem.
 
 **"Import failed: ..."**
 The message names the field that's wrong, for example

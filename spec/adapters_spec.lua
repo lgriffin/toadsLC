@@ -222,6 +222,53 @@ describe("addon in a fake client", function()
     assert.is_nil(tt.lines)
   end)
 
+  it("hooks OnTooltipSetItem even when the client also has TooltipDataProcessor (TBC Classic)", function()
+    W.install({ tooltipData = true })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+    for _, name in ipairs({ "GameTooltip", "ItemRefTooltip" }) do
+      local tt = _G[name]
+      assert.is_function(tt.hooks and tt.hooks.OnTooltipSetItem, name)
+      tt.GetItem = function() return "Dragonspine Trophy", "|Hitem:28830::|h[Dragonspine Trophy]|h" end
+      tt.hooks.OnTooltipSetItem(tt)
+      assert.are.equal(8, #tt.lines, name)
+      -- the data processor's post call skips tooltips the hook already covers
+      W.tooltipPostCalls[1].fn(tt, { id = 28830 })
+      assert.are.equal(8, #tt.lines, name)
+    end
+  end)
+
+  it("falls back to TooltipDataProcessor on tooltips without OnTooltipSetItem", function()
+    W.install({ tooltipData = true, noSetItem = true })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+    local tt = _G.GameTooltip
+    assert.is_nil(tt.hooks and tt.hooks.OnTooltipSetItem)
+    tt.GetItem = function() return "Dragonspine Trophy", nil end
+    W.tooltipPostCalls[1].fn(tt, { id = 28830 })
+    assert.are.equal(8, #tt.lines)
+  end)
+
+  it("/tlc debug says which hooks are in and why the last tooltip had no block", function()
+    local tt = _G.GameTooltip
+    tt.GetItem = function() return "Dragonspine Trophy", "|Hitem:28830::|h[Dragonspine Trophy]|h" end
+    tt.hooks.OnTooltipSetItem(tt)
+    W.slash("debug")
+    local out = table.concat(W.printed, "\n")
+    assert.matches("interface 20505", out)
+    assert.matches("Tooltip hooks: GameTooltip, ItemRefTooltip", out)
+    assert.matches("Dragonspine Trophy %(28830%) on GameTooltip: not shown, no list imported", out)
+    W.ns.App.import(sample)
+    tt.lines = nil
+    tt.hooks.OnTooltipSetItem(tt)
+    W.slash("debug [Dragonspine Trophy]")
+    out = table.concat(W.printed, "\n")
+    assert.matches("Priority block shown", out)
+    assert.matches("Dragonspine Trophy %(28830%): on the list: BM Hunter", out)
+  end)
+
   it("marks the viewer's own tier on the tooltip", function()
     W.install({ me = "Gally" })
     W.load()
@@ -256,6 +303,18 @@ describe("/tlc sim", function()
     for _, id in ipairs(reg.order) do out[#out + 1] = reg.sessions[id] end
     return out
   end
+
+  it("shows the item's Priority block when hovering the item on the loot and council frames", function()
+    W.ns.App.import(H.read("fixtures/priority.sample.json"))
+    W.slash("sim [Dragonspine Trophy] 20")
+    local tt = _G.GameTooltip
+    _G.ToadsLCCandidateFrame.itemHover.scripts.OnEnter(_G.ToadsLCCandidateFrame.itemHover)
+    assert.matches("^item:28830", tt.link)
+    assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
+    W.ns.Frames.showCouncil()
+    _G.ToadsLCCouncilFrame.itemHover.scripts.OnEnter(_G.ToadsLCCouncilFrame.itemHover)
+    assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
+  end)
 
   it("chooses a boss's drops, or one item, from the loot tables", function()
     local zone, boss, items = W.ns.Sim.choose("gruul the dragonkiller")

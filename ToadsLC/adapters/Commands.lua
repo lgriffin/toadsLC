@@ -20,6 +20,7 @@ local HELP = {
   "/tlc sim [boss | raid | item] [seconds]  practice solo or in a party: fake a boss kill and a raid answering it",
   "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc status | /tlc history | /tlc tooltip on|off",
+  "/tlc debug [item]  why the tooltip does or doesn't show priorities",
 }
 
 local function words(msg)
@@ -82,6 +83,7 @@ handlers["end"] = function() ns.App.endRaid() end
 
 function handlers.status() ns.App.status() end
 function handlers.history() ns.App.history() end
+function handlers.debug(rest) ns.App.debug(rest) end
 
 function handlers.tooltip(rest)
   local s = ns.Store.settings()

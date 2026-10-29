@@ -14,6 +14,7 @@ local function newWidget(C, kind, name)
   function methods:SetScript(which, fn) self.scripts[which] = fn end
   function methods:GetScript(which) return self.scripts[which] end
   function methods:HookScript(which, fn) self.hooks = self.hooks or {}; self.hooks[which] = fn end
+  function methods:HasScript(which) return not (self.missingScripts and self.missingScripts[which]) end
   function methods:RegisterEvent(e) self.events[e] = true; C.eventFrames[self] = true end
   function methods:UnregisterEvent(e) self.events[e] = nil end
   function methods:Show() self.shown = true end
@@ -25,6 +26,13 @@ local function newWidget(C, kind, name)
   function methods:CreateFontString() return newWidget(C, "FontString") end
   function methods:CreateTexture() return newWidget(C, "Texture") end
   function methods:GetName() return self.name end
+  -- a GameTooltip shown from a link fires OnTooltipSetItem, as the client does
+  function methods:SetHyperlink(link)
+    self.link, self.lines = link, nil
+    local id = link:match("item:(%d+)")
+    self.GetItem = function() return nil, "|Hitem:" .. id .. "::|h[Item]|h" end
+    if self.hooks and self.hooks.OnTooltipSetItem then self.hooks.OnTooltipSetItem(self) end
+  end
   function methods:AddLine(t) self.lines = self.lines or {}; table.insert(self.lines, t) end
   -- any other method is a no-op; plain fields stay nil
   return setmetatable(w, { __index = function(_, k)
@@ -57,6 +65,18 @@ local function setup(C, G, opts)
   G.date, G.time = os.date, function() return C.time end
   G.GameTooltip = newWidget(C, "GameTooltip", "GameTooltip")
   G.ItemRefTooltip = newWidget(C, "GameTooltip", "ItemRefTooltip")
+  -- opts.tooltipData: a TooltipDataProcessor whose post calls land in C.tooltipPostCalls
+  -- (the TBC Classic client has one, but its tooltips never call it);
+  -- opts.noSetItem: tooltips without OnTooltipSetItem, as on clients that removed it
+  C.tooltipPostCalls = {}
+  G.TooltipDataProcessor = opts.tooltipData and {
+    AddTooltipPostCall = function(kind, fn) table.insert(C.tooltipPostCalls, { kind = kind, fn = fn }) end,
+  } or nil
+  G.Enum = opts.tooltipData and { TooltipDataType = { Item = 0 } } or nil
+  if opts.noSetItem then
+    G.GameTooltip.missingScripts = { OnTooltipSetItem = true }
+    G.ItemRefTooltip.missingScripts = { OnTooltipSetItem = true }
+  end
   G.CreateFrame = function(kind, name) local w = newWidget(C, kind, name); if name then G[name] = w end; return w end
   G.GetServerTime = function() return C.time end
   G.GetAddOnMetadata = function() return "0.1.0" end
@@ -102,6 +122,7 @@ local function setup(C, G, opts)
   G.GetRealmName = function() return "Spineshatter" end
   G.GetItemInfo = function(id) return "Item " .. id, "|cffa335ee|Hitem:" .. id .. "::::::::70:::::|h[Item " .. id .. "]|h|r" end
   G.GetItemInfoInstant = function() return nil end
+  G.GetBuildInfo = function() return "2.5.5", "65000", "Oct 1 2026", 20505 end
   G.GetItemIcon = function() return "icon" end
   G.InCombatLockdown = function() return false end
   G.CanInspect = function() return opts.canInspect or false end
