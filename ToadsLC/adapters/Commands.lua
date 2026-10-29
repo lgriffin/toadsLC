@@ -91,6 +91,9 @@ function handlers.loot(rest)
     if arg == "on" then st.lootParty = true elseif arg == "off" then st.lootParty = false else st.lootParty = not st.lootParty end
     ns.Chat.print(st.lootParty and "Recording party drops too, rare and up, for practice in a 5-man. /tlc loot party off to stop."
       or "Recording drops in raids only.")
+    if st.lootParty and st.lootAuto == false then
+      ns.Chat.print("Recording corpses is off, so nothing is recorded yet: /tlc loot auto on.")
+    end
   else
     ns.Chat.print("Usage: /tlc loot [n | next | all | roll <n> | announce | list | add <item> | remove <n> | clear | auto on|off | party on|off]")
   end

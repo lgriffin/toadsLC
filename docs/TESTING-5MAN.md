@@ -33,8 +33,9 @@ Write down which item went to whom as you go; you check the trades against it at
    `/tlc import`, paste, **Import**. `/tlc status` should show about a thousand items.
    (Dungeon blues aren't on the test list, so they're ranked by roll only. That is fine for
    this test.)
-3. **Leader:** `/tlc loot party on`. The addon says it records party drops too, rare and up.
-   `/tlc loot clear` empties anything left from a raid.
+3. **Leader:** `/tlc loot auto on` (in case it was ever turned off), then `/tlc loot party on`.
+   The addon says it records party drops too, rare and up. `/tlc loot clear` empties
+   anything left from a raid.
 4. **Leader:** `/tlc begin <password>`; **Officer:** `/tlc join <password>`. The Officer is
    told the password matches. Optional, but it's how a raid night runs.
 5. **Leader:** set the loot method to **Master Looter**, yourself as looter, threshold
@@ -113,11 +114,14 @@ things from your bags.
 
 ## When you're done
 
-28. **Leader:** `/tlc loot party off`, `/tlc loot clear`, then `/tlc export clear` (or
+28. **Leader:** `/tlc trade`, and `/tlc trade done <name>` for every winner still listed.
+    Otherwise, for the next 12 hours, a trade with one of them puts the test item in by
+    itself if it's still in your bags.
+29. **Leader:** `/tlc loot party off`, `/tlc loot clear`, then `/tlc export clear` (or
     `/tlc export` first, if you want the JSON for the bug report). The test awards are real
     sessions as far as the addon knows; clearing them keeps them out of the next raid's
     export.
-29. **Leader and Officer:** import the real priority list from the site again before the raid.
+30. **Leader and Officer:** import the real priority list from the site again before the raid.
 
 ## Without a party: /tlc sim
 

@@ -139,6 +139,10 @@ describe("/tlc loot in a fake client", function()
     _G.IsInRaid = function() return true end
     W.loot({ { 28797, "Brute Cloak of the Ogre-Magi", 3, GRUUL } })
     assert.are.equal(4, #entries()) -- in a raid, blues stay out as before
+    W.slash("loot auto off")
+    W.slash("loot party on")
+    assert.matches("Recording corpses is off", printed())
+    W.slash("loot auto on")
     W.slash("loot party off")
     _G.IsInRaid = function() return false end
     W.loot({ { 28796, "Malefic Mask of the Shadows", 4, GRUUL } })
