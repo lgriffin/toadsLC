@@ -7,7 +7,7 @@ ns.Store = Store
 
 local Codec = ns.Codec
 
-local DEFAULT_SETTINGS = { rollSeconds = 30, announceChannel = "RAID", tooltip = true }
+local DEFAULT_SETTINGS = { rollSeconds = 30, announceChannel = "RAID", tooltip = true, lootAuto = true, lootQuality = 4 }
 
 function Store.init()
   ToadsLCDB = ToadsLCDB or {}
@@ -108,4 +108,19 @@ function Store.since(t)
     if row and (row.openedAt or 0) >= t then out[#out + 1] = Codec.decode(row.json) end
   end
   return out
+end
+
+-- The night's loot list (adapters/Loot.lua), as wire entries.
+function Store.saveLoot(rows, now)
+  ToadsLCDB.loot = { json = Codec.encode(Codec.array(rows)), at = now }
+end
+
+-- loot(maxAge, now) -> the saved rows, or {} when there are none or they are older than maxAge
+function Store.loot(maxAge, now)
+  local row = ToadsLCDB.loot
+  if not row or now - (row.at or 0) > maxAge then
+    ToadsLCDB.loot = nil
+    return {}
+  end
+  return Codec.decode(row.json) or {}
 end

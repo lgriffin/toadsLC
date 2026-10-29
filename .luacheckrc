@@ -11,7 +11,7 @@ local wow = {
 local wow_read = {
   "Ambiguate", "C_AddOns", "C_ChatInfo", "C_Timer", "CanInspect", "CheckInteractDistance", "ClearInspectPlayer",
   "CreateFrame", "DEFAULT_CHAT_FRAME", "EasyMenu", "Enum", "GameTooltip", "GetAddOnMetadata", "GetInstanceInfo",
-  "GetBuildInfo", "GetItemIcon", "GetItemInfo", "GetItemInfoInstant", "GetNumGroupMembers", "GetNumSubgroupMembers",
+  "GetBuildInfo", "GetItemIcon", "GetItemInfo", "GetItemInfoInstant", "GetLootSlotInfo", "GetLootSlotLink", "GetLootSourceInfo", "GetNumLootItems", "GetNumGroupMembers", "GetNumSubgroupMembers",
   "GetRealmName", "GetServerTime", "GetTalentTabInfo", "InCombatLockdown", "IsInGroup", "IsInInstance", "IsInRaid", "MenuUtil",
   "NotifyInspect", "RAID_CLASS_COLORS", "RANDOM_ROLL_RESULT", "RandomRoll", "RegisterAddonMessagePrefix",
   "SendAddonMessage", "SendChatMessage", "StaticPopup_Show", "TooltipDataProcessor", "UIParent", "UnitClass",

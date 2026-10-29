@@ -92,9 +92,44 @@ Only your first roll counts. Rolls outside 1-100 or 1-99 are ignored.
 Raiders don't need to import anything; the tooltip only shows on clients that have the list,
 but the loot window works for everyone.
 
+### Loot now, hand out later: the loot list
+
+You don't have to stop after every boss. When the raid leader or an assistant opens a corpse
+in a raid (as master looter, say), Toads LC puts its drops on the **loot list**: everything
+epic and up, plus anything on the priority list, but not Badges of Justice, Nether Vortexes
+or Sunmotes. Looting the same corpse twice adds nothing new. Loot the corpse, bank the items,
+and move on.
+
+Whenever the council is ready (after a few trash packs, before the next boss, at the end of
+the night), the leader types `/tlc loot`. A window lists every item with its number, the boss
+it came from, and where it stands: *waiting*, *rolling*, *council deciding*, *to Name* or
+*not awarded*. Press **Session** or **Roll** on a row to start it: the item is announced in
+raid chat (with a raid warning) exactly as `/tlc session` or `/tlc roll` would, and the row
+follows it to the award. **Start next** opens the first item still waiting, and **Announce
+list** posts the waiting items to raid chat so raiders know what's coming.
+
+From chat:
+
+- `/tlc loot 3` opens a council session for item 3 (`/tlc loot 3 45` for 45 seconds);
+  `/tlc loot roll 3` a plain roll; `/tlc loot next` the first item still waiting.
+- `/tlc loot announce` posts what's still waiting; `/tlc loot list` prints the list to you.
+- `/tlc loot add [item]` adds something by hand (an item that came from somewhere the addon
+  didn't see); `/tlc loot remove 3` takes item 3 off.
+- `/tlc loot clear` empties the list. It also empties itself 12 hours after the last change.
+- `/tlc loot auto off` stops recording corpses (`on` starts again).
+
+Only one item takes rolls at a time: the next one waits until the current one closes. An item
+nobody was awarded can be started again. Typing `/tlc session [item]` for an item that is on
+the list marks it too.
+
+The list is shared: officers see the same list and the same marks, and an officer who logs in
+or reloads mid-raid gets it from the leader. Only the raid leader's and assistants' lists are
+taken; once a raid password is set, only theirs signed with it.
+
 ### When something drops
 
-The raid leader (or an assistant) starts the loot, by shift-clicking the item into the command:
+To hand an item out straight away, the raid leader (or an assistant) starts it by
+shift-clicking the item into the command:
 
 - `/tlc session [item] [seconds]` opens a **council session**. Raiders get the loot window;
   officers get the **council frame**, which lists everyone who answered, ranked by priority
@@ -163,7 +198,11 @@ You answer in the loot window and run the council frame, `/tlc award`, `/tlc rer
 - `/tlc sim Gruul the Dragonkiller`, `/tlc sim black temple` or
   `/tlc sim [Dragonspine Trophy] 20` narrow it down; the number is how many seconds
   responses stay open (5 to 600, default 30).
-- `/tlc sim stop` ends it and clears the simulated sessions, for the party too.
+- `/tlc sim drop [boss | raid | item]` records the kill's drops on the loot list instead of
+  opening them, to practise the loot list: run it for a few bosses, then start each item from
+  `/tlc loot` and the fake raid answers it.
+- `/tlc sim stop` ends it and clears the simulated sessions and loot list items, for the
+  party too.
 
 Items on your imported list use its priorities; anything else gets a made-up priority over
 the fake raid. Simulated loot never reaches group chat, the export or `/tlc history`. In a
@@ -200,6 +239,12 @@ stops it.
 | `/tlc end` | leader, officers | forget the raid password |
 | `/tlc session <item> [seconds]` | leader or assist | open a council session for an item |
 | `/tlc roll <item> [seconds]` | leader or assist | plain priority roll in raid chat |
+| `/tlc loot` | anyone | the loot list: what dropped tonight and how each item went |
+| `/tlc loot <n> [seconds]` / `next` | leader or assist | open a council session for item n, or the next waiting item |
+| `/tlc loot roll <n> [seconds]` | leader or assist | plain priority roll for item n |
+| `/tlc loot announce` / `list` | leader or assist / anyone | post the waiting items to raid chat / print the list to you |
+| `/tlc loot add <item>` / `remove <n>` / `clear` | leader or assist | change the list by hand |
+| `/tlc loot auto on` / `off` | leader or assist | record corpses you loot in a raid, or not |
 | `/tlc close` | leader | close responses on the last session early |
 | `/tlc award` | leader | award the last session to who the list says |
 | `/tlc award <name> [reason]` | leader | award to someone else, recorded as an override |
@@ -211,6 +256,7 @@ stops it.
 | `/tlc export all` | leader | every recorded session, exported or not |
 | `/tlc export clear` | leader | mark the exported sessions as sent |
 | `/tlc sim [boss \| raid \| item] [seconds]` | anyone, solo or party lead | practice with a fake boss kill |
+| `/tlc sim drop [boss \| raid \| item]` | anyone, solo or party lead | a fake kill whose drops only go on the loot list |
 | `/tlc sim stop` | anyone | end the practice |
 
 ## Troubleshooting
@@ -267,6 +313,15 @@ the site. Feral druids can't be told apart by talents, so add their spec on the 
 **The leader disconnected or reloaded mid-session.**
 The leader's addon picks up its unfinished session for up to two hours after a reload, and
 says so in chat; the leader can then carry on with `/tlc close` and `/tlc award`.
+
+**Nothing goes on the loot list when I loot.**
+Only the raid leader and assistants record, only in a raid group, and only items that are epic
+or on the priority list. Check `/tlc loot auto on`. An item looted some other way can go on
+with `/tlc loot add [item]`.
+
+**Officer: my loot list is empty or behind the leader's.**
+Join with the raid password if one is set (`/tlc join`), then `/reload`: the addon asks the
+leader for the list as it logs in.
 
 **`/tlc sim` says "Not in a raid group".**
 Simulations only run solo or in a party you lead, so fake loot never reaches a real raid.

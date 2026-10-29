@@ -122,6 +122,15 @@ local function setup(C, G, opts)
   G.GetRealmName = function() return "Spineshatter" end
   G.GetItemInfo = function(id) return "Item " .. id, "|cffa335ee|Hitem:" .. id .. "::::::::70:::::|h[Item " .. id .. "]|h|r" end
   G.GetItemInfoInstant = function() return nil end
+  -- the corpse being looted: C.corpse = { { id, name, quality, source }, ... } (W.loot fills it)
+  C.corpse = {}
+  G.GetNumLootItems = function() return #C.corpse end
+  G.GetLootSlotLink = function(i)
+    local l = C.corpse[i]
+    return l and string.format("|cffa335ee|Hitem:%d::::::::70:::::|h[%s]|h|r", l[1], l[2])
+  end
+  G.GetLootSlotInfo = function(i) local l = C.corpse[i]; return "icon", l and l[2], 1, nil, l and l[3] end
+  G.GetLootSourceInfo = function(i) local l = C.corpse[i]; return l and l[4], 1 end
   G.GetBuildInfo = function() return "2.5.5", "65000", "Oct 1 2026", 20505 end
   G.GetItemIcon = function() return "icon" end
   G.InCombatLockdown = function() return false end
@@ -129,7 +138,8 @@ local function setup(C, G, opts)
   G.CheckInteractDistance = function() return opts.canInspect or false end
   G.StaticPopup_Show = function() end
   G.ChatFontNormal = {}
-  G.ToadsLCDB = opts.db
+  -- a client in its own table starts with its own SavedVariables, never _G's
+  G.ToadsLCDB = opts.db or (G ~= _G and {} or nil)
 end
 
 -- load(C): run every file listed in ToadsLC.toc, as the client does.
@@ -154,6 +164,12 @@ local function fire(C, event, ...)
 end
 
 local function slash(C, msg) C.env.SlashCmdList.TOADSLC(msg) end
+
+-- loot(C, items): open a corpse holding items ({ id, name, quality, source }), as LOOT_OPENED does
+local function loot(C, items)
+  C.corpse = items
+  fire(C, "LOOT_OPENED")
+end
 
 local function tick(C, seconds)
   C.time = C.time + (seconds or 0)
@@ -180,12 +196,13 @@ function M.install(opts) setup(M, _G, opts) end
 function M.load() return load(M) end
 function M.fire(...) return fire(M, ...) end
 function M.slash(msg) return slash(M, msg) end
+function M.loot(items) return loot(M, items) end
 function M.tick(seconds) return tick(M, seconds) end
 function M.flushComms() return flushComms(M) end
 function M.chatText() return chatText(M) end
 
 -- client(opts) -> a client in its own global table, already logged in; c:fire(...), c:slash(...), ...
-local Client = { fire = fire, slash = slash, tick = tick, flushComms = flushComms, chatText = chatText,
+local Client = { fire = fire, slash = slash, loot = loot, tick = tick, flushComms = flushComms, chatText = chatText,
                  printedText = printedText }
 Client.__index = Client
 

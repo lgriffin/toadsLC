@@ -11,6 +11,7 @@ core\Resolver.lua
 core\Session.lua
 core\Crypto.lua
 core\Wire.lua
+core\LootList.lua
 
 data\RaidLoot.lua
 
@@ -22,6 +23,7 @@ adapters\CouncilComms.lua
 adapters\Tooltip.lua
 adapters\Frames.lua
 adapters\Sim.lua
+adapters\Loot.lua
 adapters\Commands.lua
 
 Init.lua

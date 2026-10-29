@@ -1,4 +1,4 @@
--- Frames: candidate frame (raiders), council frame (officers), import/export frame.
+-- Frames: candidate frame (raiders), council frame (officers), loot list, import/export frame.
 -- Built in Lua on stock templates, no XML. Frames only read session state and call
 -- ns.App actions; they never change a session themselves.
 local _, ns = ...
@@ -533,6 +533,7 @@ end
 function Frames.councilShown() return council and council:IsShown() end
 
 function Frames.sessionsChanged()
+  Frames.refreshLoot()
   if not council then return end
   local current = shownSession()
   council.order = orderSessions()
@@ -540,6 +541,129 @@ function Frames.sessionsChanged()
   for i, sid in ipairs(council.order) do if current and sid == current.id then council.index = i end end
   Frames.refresh()
 end
+
+---------------------------------------------------------------------------
+-- loot list frame: what dropped tonight; the leader starts each item from here
+---------------------------------------------------------------------------
+
+local lootFrame
+local LOOT_ROWS = 16
+
+local function lootEntries() return ns.Loot.list.entries end
+
+local function buildLoot()
+  lootFrame = window("ToadsLCLootFrame", "Toads LC: raid loot", 560, 110 + LOOT_ROWS * 22)
+  lootFrame.offset = 0
+  local heads = { { "#", 16 }, { "Item", 40 }, { "Boss", 270 }, { "Status", 370 } }
+  for _, h in ipairs(heads) do
+    local fs = lootFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", h[2], -32)
+    fs:SetText(h[1])
+  end
+  lootFrame.rows = {}
+  for i = 1, LOOT_ROWS do
+    local row = CreateFrame("Frame", nil, lootFrame)
+    row:SetSize(530, 22)
+    row:SetPoint("TOPLEFT", 12, -46 - (i - 1) * 22)
+    row.num = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.num:SetPoint("LEFT", 4, 0)
+    row.item = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.item:SetPoint("LEFT", 28, 0)
+    row.item:SetWidth(226)
+    row.item:SetJustifyH("LEFT")
+    row.item:SetWordWrap(false)
+    row.hover = itemHover(row, function() return row.entry and { itemLink = ns.Loot.linkOf(row.entry), itemId = row.entry.itemId } end)
+    row.hover:SetPoint("LEFT", 28, 0)
+    row.hover:SetSize(226, 20)
+    row.boss = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.boss:SetPoint("LEFT", 258, 0)
+    row.boss:SetWidth(96)
+    row.boss:SetJustifyH("LEFT")
+    row.boss:SetWordWrap(false)
+    row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.status:SetPoint("LEFT", 358, 0)
+    row.status:SetWidth(90)
+    row.status:SetJustifyH("LEFT")
+    row.status:SetWordWrap(false)
+    row.session = button(row, "Session", 58, function()
+      if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "session") end
+    end)
+    row.session:SetPoint("RIGHT", -40, 0)
+    row.roll = button(row, "Roll", 40, function()
+      if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "roll") end
+    end)
+    row.roll:SetPoint("LEFT", row.session, "RIGHT", 0, 0)
+    lootFrame.rows[i] = row
+  end
+  lootFrame:EnableMouseWheel(true)
+  lootFrame:SetScript("OnMouseWheel", function(self, delta)
+    self.offset = math.max(0, math.min(#lootEntries() - LOOT_ROWS, self.offset - delta * 3))
+    Frames.refreshLoot()
+  end)
+  lootFrame.footer = lootFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  lootFrame.footer:SetPoint("BOTTOMLEFT", 16, 40)
+  lootFrame.footer:SetPoint("RIGHT", -16, 0)
+  lootFrame.footer:SetJustifyH("LEFT")
+  lootFrame.nextBtn = button(lootFrame, "Start next", 100, function() ns.Loot.startNext("session") end)
+  lootFrame.nextBtn:SetPoint("BOTTOMLEFT", 14, 12)
+  lootFrame.announce = button(lootFrame, "Announce list", 110, function() ns.Loot.announce() end)
+  lootFrame.announce:SetPoint("LEFT", lootFrame.nextBtn, "RIGHT", 4, 0)
+  lootFrame.clear = button(lootFrame, "Clear list", 90, function()
+    Frames.prompt("Clear the whole loot list? Type yes", function(text)
+      if text and text:lower() == "yes" then ns.Loot.clear() end
+    end)
+  end)
+  lootFrame.clear:SetPoint("BOTTOMRIGHT", -14, 12)
+end
+
+local STATUS_COLOUR = { waiting = AMBER, awarded = GREEN, none = GREY }
+
+function Frames.refreshLoot()
+  if not lootFrame or not lootFrame:IsShown() then return end
+  local entries = lootEntries()
+  local lead = ns.Roster.canLead()
+  local busy = ns.App.registry:rolling() ~= nil
+  lootFrame.offset = math.max(0, math.min(lootFrame.offset, #entries - LOOT_ROWS))
+  for i, row in ipairs(lootFrame.rows) do
+    local n = i + lootFrame.offset
+    local e = entries[n]
+    row.entry = e
+    if not e then
+      row:Hide()
+    else
+      row:Show()
+      row.num:SetText(tostring(n))
+      row.item:SetText(ns.Loot.linkOf(e))
+      row.boss:SetText((e.sim and "[sim] " or "") .. (e.boss ~= "" and e.boss or "?"))
+      row.status:SetText(colourText(STATUS_COLOUR[e.status] or { 1, 1, 1 }, ns.LootList.label(e)))
+      local can = lead and ns.LootList.startable(e)
+      row.session:SetShown(can)
+      row.roll:SetShown(can and not e.sim)
+      row.session:SetEnabled(not busy)
+      row.roll:SetEnabled(not busy)
+    end
+  end
+  local waiting = #ns.Loot.list:waiting()
+  if #entries == 0 then
+    lootFrame.footer:SetText("Nothing recorded yet. Drops you loot in a raid appear here; /tlc loot add <item> adds one by hand.")
+  else
+    lootFrame.footer:SetText(string.format("%d item%s, %d waiting%s.", #entries, #entries == 1 and "" or "s", waiting,
+      busy and "; one is taking rolls now" or ""))
+  end
+  lootFrame.nextBtn:SetShown(lead and waiting > 0)
+  lootFrame.nextBtn:SetEnabled(not busy)
+  lootFrame.announce:SetShown(lead and waiting > 0)
+  lootFrame.clear:SetShown(lead and #entries > 0)
+end
+
+function Frames.showLoot()
+  if not lootFrame then buildLoot() end
+  lootFrame:Show()
+  Frames.refreshLoot()
+  return true
+end
+
+function Frames.lootChanged() Frames.refreshLoot() end
 
 ---------------------------------------------------------------------------
 -- import / export frame
