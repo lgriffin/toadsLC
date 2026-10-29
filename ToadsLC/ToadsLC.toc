@@ -4,6 +4,7 @@
 ## Author: Toads (Spineshatter EU)
 ## Version: 0.2.1
 ## SavedVariables: ToadsLCDB
+## SavedVariablesPerCharacter: ToadsLCCharDB
 
 core\Codec.lua
 core\Priority.lua

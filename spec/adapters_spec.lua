@@ -317,6 +317,18 @@ describe("/tlc sim", function()
     assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
   end)
 
+  it("puts a window back at this character's saved size", function()
+    W.install({ charDb = { scale = 1, frames = { ToadsLCLootFrame = { w = 700, h = 110 + 5 * 22, point = "CENTER",
+      relPoint = "CENTER", x = 0, y = 0 } } } })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.slash("sim drop gruul the dragonkiller")
+    W.slash("loot")
+    local f = _G.ToadsLCLootFrame
+    assert.are.equal(700, f.width)
+    assert.are.equal(5, f.visible)
+  end)
+
   it("chooses a boss's drops, or one item, from the loot tables", function()
     local zone, boss, items = W.ns.Sim.choose("gruul the dragonkiller")
     assert.are.equal("Gruul's Lair", zone)
