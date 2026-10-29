@@ -24,6 +24,17 @@ end
 
 function Store.settings() return ToadsLCDB.settings end
 
+-- layout(): this character's window sizes, positions and scale (ToadsLCCharDB, per character,
+-- since each character may play on a different screen). Read lazily: frames can be built
+-- before PLAYER_LOGIN has run Store.init in tests.
+function Store.layout()
+  ToadsLCCharDB = ToadsLCCharDB or {}
+  local db = ToadsLCCharDB
+  db.frames = db.frames or {} -- frame name -> { w, h, point, relPoint, x, y }
+  db.scale = db.scale or 1
+  return db
+end
+
 function Store.priorities() return ToadsLCDB.priorities end
 
 -- setPriorities(db): the previous list is kept under priorities.previous for one undo.

@@ -79,6 +79,13 @@ to do anything beyond answering loot.
 
 Only your first roll counts. Rolls outside 1-100 or 1-99 are ignored.
 
+**Window too big or too small for your screen?** Every Toads LC window (the loot window, the
+council frame, the raid loot list and the import/export window) moves by dragging its title and
+resizes by dragging its bottom-right corner; the lists show as many rows as fit and scroll with
+the mouse wheel. `/tlc scale 0.8` (anything from 0.5 to 2) makes them all smaller or bigger, and
+`/tlc scale reset` puts every window back to its default size, place and scale. Sizes, places and
+scale are kept per character.
+
 ## Raid night for the leader and officers
 
 ### Before the raid

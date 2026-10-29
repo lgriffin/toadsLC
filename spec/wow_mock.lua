@@ -164,6 +164,7 @@ local function setup(C, G, opts)
   G.ChatFontNormal = {}
   -- a client in its own table starts with its own SavedVariables, never _G's
   G.ToadsLCDB = opts.db or (G ~= _G and {} or nil)
+  G.ToadsLCCharDB = opts.charDb
 end
 
 -- load(C): run every file listed in ToadsLC.toc, as the client does.

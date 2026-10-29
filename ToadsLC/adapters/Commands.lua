@@ -29,6 +29,8 @@ local HELP = {
   "/tlc sim drop [boss | raid | item]  fake a kill whose drops only go on the loot list",
   "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc status | /tlc history | /tlc tooltip on|off",
+  "/tlc scale <0.5-2> | reset  make every Toads LC window bigger or smaller; reset puts them back",
+  "  (drag a window's bottom-right corner to resize it; sizes and places are kept per character)",
   "/tlc debug [item]  why the tooltip does or doesn't show priorities",
 }
 
@@ -157,6 +159,23 @@ function handlers.tooltip(rest)
   local s = ns.Store.settings()
   if rest == "on" then s.tooltip = true elseif rest == "off" then s.tooltip = false else s.tooltip = not s.tooltip end
   ns.Chat.print("Tooltip priorities " .. (s.tooltip and "on" or "off") .. ".")
+end
+
+function handlers.scale(rest)
+  rest = rest:lower()
+  if rest == "reset" then
+    ns.Frames.resetLayout()
+    ns.Chat.print("Windows back to their default size, place and scale.")
+    return
+  end
+  local n = tonumber(rest)
+  if n and n >= 0.5 and n <= 2 then
+    ns.Frames.setScale(n)
+    ns.Chat.print(string.format("Window scale %.2f.", n))
+  else
+    ns.Chat.print(string.format("Window scale is %.2f. Usage: /tlc scale <0.5-2> | reset. "
+      .. "Drag a window's bottom-right corner to resize it.", ns.Frames.scale()))
+  end
 end
 
 function handlers.help()

@@ -25,6 +25,7 @@ describe("ToadsLC.toc", function()
     assert.are.equal("Toads LC", meta.Title)
     assert.matches("^%d+%.%d+%.%d+$", meta.Version)
     assert.are.equal("ToadsLCDB", meta.SavedVariables)
+    assert.are.equal("ToadsLCCharDB", meta.SavedVariablesPerCharacter) -- window sizes, per screen
   end)
 
   it("lists files that exist, each once", function()
