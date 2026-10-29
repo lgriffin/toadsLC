@@ -77,7 +77,14 @@ The zip holds one top-level `ToadsLC/` folder with the `.toc` and exactly the fi
 so players unzip it straight into `Interface/AddOns`. Specs, tools, schemas, fixtures and the
 loot JSON stay out. The folder name must match `ToadsLC.toc`, or the client ignores the addon.
 
-To publish a release, tag the commit on `main` and push the tag:
+To publish a release without a clone (from the GitHub phone app or the website): open the
+repo's **Actions** tab, pick **release**, tap **Run workflow**, leave **bump** on `patch` (or
+pick `minor`/`major`, or type an exact version), and run it. It tags the latest `main` with the
+next version after the newest `v*` tag and publishes the zip. A version that is already
+released fails the run instead of overwriting it. In this project you can also ask Claude to
+"release please", which runs the same workflow.
+
+Or, from a clone, tag the commit on `main` and push the tag:
 
 ```sh
 git checkout main && git pull        # the tag must point at an up-to-date main

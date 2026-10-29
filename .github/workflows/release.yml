@@ -1,22 +1,75 @@
 name: release
 
-# Push a tag like v0.2.1 to publish ToadsLC-0.2.1.zip on the repo's Releases page. The tag
-# sets the version: it is stamped into the zipped ToadsLC.toc, whatever the repo's copy says.
+# Two ways to publish ToadsLC-x.y.z.zip on the repo's Releases page:
+#  - Run this workflow from the Actions tab (works from the GitHub phone app): it tags the
+#    latest main with the next version and publishes. Pick patch/minor/major, or type an
+#    exact version.
+#  - Push a tag like v0.2.1 from a clone.
+# The tag sets the version: it is stamped into the zipped ToadsLC.toc, whatever the repo's copy says.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of the last release's version to bump"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: "Or an exact version, like 0.3.0 (leave empty to use the bump)"
+        type: string
+        required: false
 
 permissions:
   contents: write
+
+concurrency: release
 
 jobs:
   release:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          fetch-depth: 0
+      - name: Pick the version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          WANTED: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$WANTED" ]; then
+            next="${WANTED#v}"
+          else
+            last=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+            IFS=. read -r major minor patch <<< "${last#v}"
+            major=${major:-0} minor=${minor:-0} patch=${patch:-0}
+            case "$BUMP" in
+              major) next="$((major + 1)).0.0" ;;
+              minor) next="$major.$((minor + 1)).0" ;;
+              *) next="$major.$minor.$((patch + 1))" ;;
+            esac
+          fi
+          if ! [[ "$next" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must be x.y.z, got '$next'"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$next" >/dev/null; then
+            echo "::error::v$next is already released; pick a newer version"
+            exit 1
+          fi
+          echo "tag=v$next" >> "$GITHUB_OUTPUT"
       - name: Build the release zip
-        run: python3 tools/package.py --version "$GITHUB_REF_NAME"
+        run: python3 tools/package.py --version "${{ steps.version.outputs.tag }}"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/ToadsLC-*.zip --title "Toads LC $GITHUB_REF_NAME" --generate-notes
+          TAG: ${{ steps.version.outputs.tag }}
+        # On a manual run gh creates the tag on the checked-out main commit.
+        run: gh release create "$TAG" build/ToadsLC-*.zip --target "$(git rev-parse HEAD)" --title "Toads LC $TAG" --generate-notes
