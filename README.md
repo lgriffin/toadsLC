@@ -146,6 +146,12 @@ addon reminds them to `/tlc join`.
 
 ## Practice with /tlc sim
 
+**No priority list yet?** Import the test list to see priorities on every raid item's
+tooltip: open [priority.test.json](https://raw.githubusercontent.com/lgriffin/toadsLC/main/fixtures/priority.test.json),
+select all and copy, then `/tlc import`, paste and press **Import**. Its priorities are
+made up from each item's stats and armour type, **not the guild's**, so import the real list
+from the site before a raid.
+
 `/tlc sim` fakes a boss kill so you can try the whole flow outside a raid, solo or in a
 party you lead. It opens a council session for each of the boss's drops in turn (two for
 Karazhan and Zul'Aman bosses, three elsewhere). A fake raid of twelve answers with buttons,
