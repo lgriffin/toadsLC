@@ -58,6 +58,11 @@ def main():
     loot = json.loads((ROOT / "data/tbc-raid-loot.json").read_text())
     ok &= check("priority.json", priority, "priority sample")
     ok &= check("loot.json", loot, "loot schema") and check_loot(loot, priority)
+    test_list = json.loads((ROOT / "fixtures/priority.test.json").read_text())
+    ok &= check("priority.json", test_list, "test priority list")
+    if len(test_list["items"]) != len(loot["items"]):
+        print("test priority list: does not cover the loot tables; run tools/make_test_priorities.py")
+        ok = False
     ok &= check("session.json", json.loads((ROOT / "fixtures/session.sample.json").read_text()), "session sample")
     out = subprocess.run(["lua5.1", "tools/export_sample.lua"], cwd=ROOT, check=True, capture_output=True, text=True)
     export = json.loads(out.stdout)

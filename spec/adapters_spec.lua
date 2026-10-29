@@ -374,3 +374,23 @@ describe("Chat", function()
     assert.are.equal(long, table.concat(ns.Chat.split(long)))
   end)
 end)
+
+describe("the test priority list (fixtures/priority.test.json)", function()
+  it("imports every raid item and puts a Priority block on any of them", function()
+    W.install()
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    local ok, msg = W.ns.App.import(H.read("fixtures/priority.test.json"))
+    assert.is_true(ok, msg)
+    assert.matches("^Imported 1037 items", msg)
+    local tt = _G.GameTooltip
+    for _, item in ipairs({ { 32837, "Warglaive of Azzinoth", "Rogue" }, { 30627, "Tsunami Talisman", "Rogue" },
+                            { 29758, "Gloves of the Fallen Defender", "Warrior" } }) do
+      tt.lines = nil
+      tt.GetItem = function() return item[2], "|Hitem:" .. item[1] .. "::|h[" .. item[2] .. "]|h" end
+      tt.hooks.OnTooltipSetItem(tt)
+      assert.matches("Priority %(Toads LC%)", tt.lines[2], item[2])
+      assert.matches(item[3], table.concat(tt.lines, "\n"), item[2])
+    end
+  end)
+end)

@@ -109,6 +109,13 @@ Fallen Hero can be shown on Voidheart Crown and back again, the way Gargul links
 The JSON contract lives in `schemas/` (`toads-loot-priority` v1 and `toads-loot-session`
 v1) with the sample documents from the design doc in `fixtures/`.
 
+`fixtures/priority.test.json` is a made-up priority for all 1037 items, for trying tooltips,
+sessions and `/tlc sim` in game before the real list exists. `python3 tools/make_test_priorities.py`
+regenerates it from the loot tables and the same npm package: each item's tiers come from its
+armour or weapon type, class restriction and stats, tier tokens list their classes, and
+Dragonspine Trophy keeps the sample's hand-written priority. `tools/contract.py` checks it against
+the schema and that it still covers every item in the loot tables.
+
 ## Raid password internals
 
 Without a raid password, council traffic is plain JSON on the RAID addon channel: anyone
