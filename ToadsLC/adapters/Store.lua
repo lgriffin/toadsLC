@@ -8,7 +8,8 @@ ns.Store = Store
 local Codec = ns.Codec
 
 local DEFAULT_SETTINGS = { rollSeconds = 30, announceChannel = "RAID", tooltip = true, lootAuto = true, lootQuality = 4,
-                           autoTrade = true, lootParty = false }
+                           autoTrade = true, lootParty = false, announceAward = true,
+                           announceTrade = true }
 
 function Store.init()
   ToadsLCDB = ToadsLCDB or {}

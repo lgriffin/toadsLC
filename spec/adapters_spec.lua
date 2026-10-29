@@ -433,6 +433,21 @@ describe("Chat", function()
     local long = string.rep("x", 600)
     assert.are.equal(long, table.concat(ns.Chat.split(long)))
   end)
+
+  it("never cuts inside an item link", function()
+    W.install()
+    local ns = W.load()
+    local link = "|cffa335ee|Hitem:29765::::::::70:::::|h[Leggings of the Fallen Hero]|h|r"
+    for pad = 150, 240, 7 do
+      local lines = ns.Chat.split(string.rep("y", pad) .. " grats " .. link .. " traded to Gally.")
+      local whole = false
+      for _, l in ipairs(lines) do
+        assert.is_true(#l <= 250)
+        if l:find(link, 1, true) then whole = true end
+      end
+      assert.is_true(whole, "link cut with pad " .. pad)
+    end
+  end)
 end)
 
 describe("the test priority list (fixtures/priority.test.json)", function()
