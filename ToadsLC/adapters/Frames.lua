@@ -122,76 +122,133 @@ local function contextMenu(owner, entries)
 end
 
 ---------------------------------------------------------------------------
--- candidate frame: what a raider sees when a session opens
+-- candidate frame: what a raider sees when sessions open. One row per item still waiting for
+-- this player's answer, so a whole loot pool opened at once (/tlc loot all) is answered in one
+-- window; the note goes with the next button pressed.
 ---------------------------------------------------------------------------
 
 local cand
+local CAND_ROWS = 6
+local CAND_H = 44
+
+local function waitingForMe()
+  local reg, out = ns.App.registry, {}
+  for _, id in ipairs(reg.order) do
+    local s = reg:get(id)
+    if s.mode == "session" and s.phase == "open" and not s.myResponse and s:timeLeft(ns.App.now()) > 0 then
+      out[#out + 1] = s
+    end
+  end
+  return out
+end
+
+local function tierText(s)
+  local me = ns.Roster.specOf("player")
+  local tier = s.item and Priority.tierOf(s.item, { player = ns.Roster.me(), class = me.class, spec = me.spec })
+  if not s.item then return "Not on the priority list: highest roll wins" end
+  if tier then return string.format("Your tier: %d of %d", tier, #s.item.priority) end
+  return "Your spec is not on the list for this item"
+end
 
 local function buildCandidate()
-  cand = window("ToadsLCCandidateFrame", "Toads LC: loot", 340, 170)
+  cand = window("ToadsLCCandidateFrame", "Toads LC: loot", 470, 96 + CAND_ROWS * CAND_H)
   cand:SetPoint("CENTER", 0, 180)
-  cand.icon = cand:CreateTexture(nil, "ARTWORK")
-  cand.icon:SetSize(36, 36)
-  cand.icon:SetPoint("TOPLEFT", 14, -32)
-  cand.item = cand:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  cand.item:SetPoint("TOPLEFT", cand.icon, "TOPRIGHT", 8, 0)
-  cand.item:SetPoint("RIGHT", -12, 0)
-  cand.item:SetJustifyH("LEFT")
-  cand.itemHover = itemHover(cand, function() return cand.session end)
-  cand.itemHover:SetPoint("TOPLEFT", cand.icon, "TOPLEFT")
-  cand.itemHover:SetSize(240, 36)
-  cand.tier = cand:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  cand.tier:SetPoint("TOPLEFT", cand.item, "BOTTOMLEFT", 0, -4)
-  cand.timer = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  cand.timer:SetPoint("TOPRIGHT", -14, -32)
+  cand.offset = 0
+  local function answer(row, response)
+    return function()
+      if not row.session then return end
+      ns.App.respond(row.session.id, response, cand.note:GetText())
+      cand.note:SetText("")
+      Frames.refreshCandidate()
+    end
+  end
+  cand.rows = {}
+  for i = 1, CAND_ROWS do
+    local row = CreateFrame("Frame", nil, cand)
+    row:SetSize(446, CAND_H)
+    row:SetPoint("TOPLEFT", 12, -28 - (i - 1) * CAND_H)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(32, 32)
+    row.icon:SetPoint("LEFT", 2, 0)
+    row.item = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.item:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 6, 0)
+    row.item:SetWidth(220)
+    row.item:SetJustifyH("LEFT")
+    row.item:SetWordWrap(false)
+    row.tier = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.tier:SetPoint("TOPLEFT", row.item, "BOTTOMLEFT", 0, -3)
+    row.tier:SetWidth(220)
+    row.tier:SetJustifyH("LEFT")
+    row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.timer:SetPoint("TOPRIGHT", -2, -2)
+    row.hover = itemHover(row, function() return row.session end)
+    row.hover:SetPoint("LEFT", 2, 0)
+    row.hover:SetSize(256, 36)
+    row.main = button(row, "MS", 50, answer(row, "main"))
+    row.main:SetPoint("BOTTOMRIGHT", -112, 2)
+    row.off = button(row, "OS", 64, answer(row, "offspec"))
+    row.off:SetPoint("LEFT", row.main, "RIGHT", 2, 0)
+    row.pass = button(row, "Pass", 44, answer(row, "pass"))
+    row.pass:SetPoint("LEFT", row.off, "RIGHT", 2, 0)
+    cand.rows[i] = row
+  end
+  cand.more = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  cand.more:SetPoint("TOPRIGHT", -30, -6)
+  cand:EnableMouseWheel(true)
+  cand:SetScript("OnMouseWheel", function(self, delta)
+    self.offset = math.max(0, self.offset - delta)
+    Frames.refreshCandidate()
+  end)
   cand.note = CreateFrame("EditBox", nil, cand, "InputBoxTemplate")
-  cand.note:SetSize(300, 20)
-  cand.note:SetPoint("TOPLEFT", 20, -84)
+  cand.note:SetSize(430, 20)
+  cand.note:SetPoint("BOTTOMLEFT", 20, 14)
   cand.note:SetAutoFocus(false)
   cand.note:SetMaxLetters(80)
   local hint = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   hint:SetPoint("BOTTOMLEFT", cand.note, "TOPLEFT", -4, 2)
-  hint:SetText("Note to the council (optional)")
-  local function answer(response)
-    return function()
-      ns.App.respond(cand.session.id, response, cand.note:GetText())
-      cand:Hide()
-    end
-  end
-  cand.main = button(cand, "MS", 96, answer("main"))
-  cand.main:SetPoint("BOTTOMLEFT", 14, 14)
-  cand.off = button(cand, "OS", 96, answer("offspec"))
-  cand.off:SetPoint("LEFT", cand.main, "RIGHT", 6, 0)
-  cand.pass = button(cand, "Pass", 96, answer("pass"))
-  cand.pass:SetPoint("LEFT", cand.off, "RIGHT", 6, 0)
-  cand:SetScript("OnUpdate", function(self)
-    local left = self.session and self.session:timeLeft(ns.App.now()) or 0
-    self.timer:SetText(string.format("%d s", left))
-    if left <= 0 then self:Hide() end
+  hint:SetText("Note to the council (optional, sent with your next answer)")
+  cand:SetScript("OnUpdate", function(self, dt)
+    self.acc = (self.acc or 0) + dt
+    if self.acc < 0.5 then return end
+    self.acc = 0
+    Frames.refreshCandidate()
   end)
 end
 
-function Frames.showCandidate(s)
-  if not cand then buildCandidate() end
-  cand.session = s
-  cand.icon:SetTexture(s.itemId and GetItemIcon(s.itemId) or "Interface\\Icons\\INV_Misc_QuestionMark")
-  cand.item:SetText(s.itemLink or s.itemName)
-  local me = ns.Roster.specOf("player")
-  local tier = s.item and Priority.tierOf(s.item, { player = ns.Roster.me(), class = me.class, spec = me.spec })
-  if not s.item then
-    cand.tier:SetText("Not on the priority list: highest roll wins")
-  elseif tier then
-    cand.tier:SetText(string.format("Your tier: %d of %d", tier, #s.item.priority))
-  else
-    cand.tier:SetText("Your spec is not on the list for this item")
+-- refreshCandidate(): one row per open session still waiting for my answer; hidden when none
+function Frames.refreshCandidate()
+  if not cand then return end
+  local list = waitingForMe()
+  if #list == 0 then cand:Hide(); return end
+  cand.offset = math.max(0, math.min(cand.offset, #list - CAND_ROWS))
+  cand.title:SetText(#list == 1 and "Toads LC: loot" or string.format("Toads LC: loot (%d items)", #list))
+  cand.more:SetText(#list > CAND_ROWS and string.format("%d-%d of %d (scroll)", cand.offset + 1,
+    math.min(#list, cand.offset + CAND_ROWS), #list) or "")
+  local now = ns.App.now()
+  for i, row in ipairs(cand.rows) do
+    local s = list[i + cand.offset]
+    row.session = s
+    if not s then
+      row:Hide()
+    else
+      row:Show()
+      row.icon:SetTexture(s.itemId and GetItemIcon(s.itemId) or "Interface\\Icons\\INV_Misc_QuestionMark")
+      row.item:SetText(s.itemLink or s.itemName)
+      row.tier:SetText(tierText(s))
+      row.timer:SetText(string.format("%d s", s:timeLeft(now)))
+      row.off:SetText(string.format("OS (%d)", s.rules.offspecRollMax))
+    end
   end
-  cand.off:SetText(string.format("OS (%d)", s.rules.offspecRollMax))
-  cand.note:SetText("")
   cand:Show()
 end
 
-function Frames.hideCandidate(s)
-  if cand and cand.session and (not s or cand.session.id == s.id) then cand:Hide() end
+function Frames.showCandidate()
+  if not cand then buildCandidate() end
+  Frames.refreshCandidate()
+end
+
+function Frames.hideCandidate()
+  if cand then Frames.refreshCandidate() end
 end
 
 ---------------------------------------------------------------------------
@@ -606,8 +663,10 @@ local function buildLoot()
   lootFrame.footer:SetJustifyH("LEFT")
   lootFrame.nextBtn = button(lootFrame, "Start next", 100, function() ns.Loot.startNext("session") end)
   lootFrame.nextBtn:SetPoint("BOTTOMLEFT", 14, 12)
+  lootFrame.all = button(lootFrame, "Start all", 90, function() ns.Loot.startAll() end)
+  lootFrame.all:SetPoint("LEFT", lootFrame.nextBtn, "RIGHT", 4, 0)
   lootFrame.announce = button(lootFrame, "Announce list", 110, function() ns.Loot.announce() end)
-  lootFrame.announce:SetPoint("LEFT", lootFrame.nextBtn, "RIGHT", 4, 0)
+  lootFrame.announce:SetPoint("LEFT", lootFrame.all, "RIGHT", 4, 0)
   lootFrame.clear = button(lootFrame, "Clear list", 90, function()
     Frames.prompt("Clear the whole loot list? Type yes", function(text)
       if text and text:lower() == "yes" then ns.Loot.clear() end
@@ -652,6 +711,8 @@ function Frames.refreshLoot()
   end
   lootFrame.nextBtn:SetShown(lead and waiting > 0)
   lootFrame.nextBtn:SetEnabled(not busy)
+  lootFrame.all:SetShown(lead and waiting > 1)
+  lootFrame.all:SetEnabled(not busy)
   lootFrame.announce:SetShown(lead and waiting > 0)
   lootFrame.clear:SetShown(lead and #entries > 0)
 end

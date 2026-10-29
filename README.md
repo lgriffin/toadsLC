@@ -64,13 +64,15 @@ to do anything beyond answering loot.
   priority tier in class colours, with your own tier marked `>`. This works in bags, on the
   loot window, on chat links and on comparison tooltips. `/tlc tooltip off` hides it.
 - **When the raid leader opens a loot session,** a small window pops up with the item, your
-  tier (or "Your spec is not on the list for this item") and a countdown. Type an optional note
-  for the council, then press:
+  tier (or "Your spec is not on the list for this item") and a countdown. When the leader opens
+  the whole loot pool at once, the window has a row per item: answer each one. Type an
+  optional note for the council (it goes with your next answer), then press:
   - **MS** (main spec): rolls 1-100 for you.
   - **OS (99)** (off-spec): rolls 1-99 for you.
   - **Pass**: you are out for this item.
 - **No addon, or you closed the window?** Just `/roll` for main spec or `/roll 99` for
-  off-spec while the countdown runs. The leader's addon reads the roll from chat.
+  off-spec while the countdown runs. The leader's addon reads the roll from chat. This only works
+  while a single item is open: with several open at once, answer in the window.
 - **For a plain roll** (`/tlc roll`, used for less contested items) there is no window: the
   leader announces the item in raid chat, you `/roll` or `/roll 99`, and the result is posted
   when the timer ends.
@@ -112,14 +114,26 @@ From chat:
 
 - `/tlc loot 3` opens a council session for item 3 (`/tlc loot 3 45` for 45 seconds);
   `/tlc loot roll 3` a plain roll; `/tlc loot next` the first item still waiting.
+- `/tlc loot all` opens **every item still to hand out at once** (up to 20), as RCLootCouncil
+  does; see below. `/tlc loot all 180` sets the time.
 - `/tlc loot announce` posts what's still waiting; `/tlc loot list` prints the list to you.
 - `/tlc loot add [item]` adds something by hand (an item that came from somewhere the addon
   didn't see); `/tlc loot remove 3` takes item 3 off.
 - `/tlc loot clear` empties the list. It also empties itself 12 hours after the last change.
 - `/tlc loot auto off` stops recording corpses (`on` starts again).
 
-Only one item takes rolls at a time: the next one waits until the current one closes. An item
-nobody was awarded can be started again. Typing `/tlc session [item]` for an item that is on
+One item at a time, or the whole pool at once: while anything is taking rolls, nothing else can
+start until it closes. An item nobody was awarded can be started again.
+
+**The whole pool at once.** **Start all** (or `/tlc loot all`) opens a council session for every
+waiting item together and posts one raid warning plus the numbered list, instead of a line per
+item. Raiders get one loot window with a row per item and MS / OS / Pass on each; answered
+items drop off the window. The window stays open 60 seconds plus 15 per item (up to 10
+minutes). Each button press also rolls, and the leader's addon matches a raider's rolls to the
+items they pressed, in order. A bare `/roll` doesn't count while several items are open (it
+can't tell which item it's for), so raiders without the addon have to wait for items started
+one at a time. The council frame steps through the items with **<** and **>**, and each is
+awarded on its own. Typing `/tlc session [item]` for an item that is on
 the list marks it too.
 
 The list is shared: officers see the same list and the same marks, and an officer who logs in
@@ -261,6 +275,7 @@ stops it.
 | `/tlc roll <item> [seconds]` | leader or assist | plain priority roll in raid chat |
 | `/tlc loot` | anyone | the loot list: what dropped tonight and how each item went |
 | `/tlc loot <n> [seconds]` / `next` | leader or assist | open a council session for item n, or the next waiting item |
+| `/tlc loot all [seconds]` | leader or assist | open every waiting item at once, answered in one window |
 | `/tlc loot roll <n> [seconds]` | leader or assist | plain priority roll for item n |
 | `/tlc loot announce` / `list` | leader or assist / anyone | post the waiting items to raid chat / print the list to you |
 | `/tlc loot add <item>` / `remove <n>` / `clear` | leader or assist | change the list by hand |

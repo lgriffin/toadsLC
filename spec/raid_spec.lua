@@ -49,7 +49,7 @@ describe("a raid of clients", function()
       assert.is_true(c.env.ToadsLCCandidateFrame:IsShown())
     end
     local cand = rogue.env.ToadsLCCandidateFrame
-    assert.are.same({ "MS", "OS (99)", "Pass" }, { cand.main:GetText(), cand.off:GetText(), cand.pass:GetText() })
+    assert.are.same({ "MS", "OS (99)", "Pass" }, { cand.rows[1].main:GetText(), cand.rows[1].off:GetText(), cand.rows[1].pass:GetText() })
     assert.is_true(officer.env.ToadsLCCouncilFrame:IsShown())
     assert.is_falsy(hunter.env.ToadsLCCouncilFrame and hunter.env.ToadsLCCouncilFrame:IsShown())
 

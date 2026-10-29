@@ -326,3 +326,165 @@ describe("the loot list across a raid of clients", function()
     assert.are.equal(3, #list(officer))
   end)
 end)
+
+describe("several items open at once", function()
+  local Session, reg, clock
+  local function open(id) return select(2, reg:open({ id = id, itemId = 1, itemName = id, council = {}, rules = {},
+                                                      mode = "session", seconds = 60 })) end
+  local function press(s, who, r) reg:handle({ t = "RSP", s = s.id, r = r or "main" }, who, true, false) end
+  local function rollOf(s, who) local e = s:entryFor(who); return e and e.roll end
+
+  before_each(function()
+    Session = H.core().Session
+    clock = 1000
+    reg = Session.newRegistry({ me = "Poohtank", now = function() return clock end, item = function() end,
+                                who = function() return {} end })
+  end)
+
+  it("gives each button roll to the item it was pressed for, in order", function()
+    local a, b = open("A"), open("B")
+    press(b, "Gally")
+    press(a, "Gally", "offspec")
+    reg:roll("Gally", 77, 1, 100)
+    reg:roll("Gally", 12, 1, 99)
+    assert.are.equal(77, rollOf(b, "Gally"))
+    assert.are.equal(12, rollOf(a, "Gally"))
+    assert.are.equal("offspec", a:entryFor("Gally").response)
+  end)
+
+  it("holds a roll that gets here before its button press", function()
+    local a, b = open("A"), open("B")
+    reg:roll("Gally", 77, 1, 100)
+    assert.is_nil(rollOf(a, "Gally"))
+    assert.is_nil(rollOf(b, "Gally"))
+    press(a, "Gally")
+    assert.are.equal(77, rollOf(a, "Gally"))
+    reg:roll("Gally", 50, 1, 100)
+    clock = clock + 20 -- its press never came in time
+    press(b, "Gally")
+    assert.is_nil(rollOf(b, "Gally"))
+  end)
+
+  it("counts a bare /roll only while one item is open", function()
+    local a = open("A")
+    reg:roll("Anasazi", 41, 1, 100)
+    assert.are.equal(41, rollOf(a, "Anasazi"))
+    local b = open("B")
+    reg:roll("Gally", 90, 1, 100)
+    assert.is_nil(rollOf(a, "Gally"))
+    assert.is_nil(rollOf(b, "Gally"))
+  end)
+
+  it("leaves a single item as it was: press then roll, or roll then press", function()
+    local a = open("A")
+    press(a, "Gally")
+    reg:roll("Gally", 33, 1, 100)
+    reg:roll("Anasazi", 44, 1, 100)
+    press(a, "Anasazi")
+    assert.are.equal(33, rollOf(a, "Gally"))
+    assert.are.equal(44, rollOf(a, "Anasazi"))
+  end)
+end)
+
+describe("/tlc loot all", function()
+  before_each(function()
+    W.install()
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+  end)
+
+  local function open()
+    local out = {}
+    for _, id in ipairs(W.ns.App.registry.order) do
+      local s = W.ns.App.registry.sessions[id]
+      if s.phase == "open" then out[#out + 1] = s end
+    end
+    return out
+  end
+
+  it("opens every waiting item at once, announced in one go, answered in one window", function()
+    W.loot(CORPSE)
+    W.slash("loot all")
+    local sessions = open()
+    assert.are.equal(3, #sessions)
+    assert.are.equal(105, sessions[1].closesAt - sessions[1].openedAt) -- 60 s + 15 s an item
+    assert.matches("^%[ToadsLC%] Loot council: 3 items open for 105 s", W.chat[1].text)
+    assert.are.equal("RAID_WARNING", W.chat[2].channel)
+    assert.matches("1%. .*Dragonspine Trophy.* 2%. .* 3%. ", W.chat[3].text)
+    assert.is_nil(W.chatText():find("Loot session:", 1, true)) -- no line per item
+    local cand = _G.ToadsLCCandidateFrame
+    assert.matches("3 items", cand.title:GetText())
+    assert.is_true(cand.rows[3]:IsShown())
+    -- the leader answers the second item, then the first; each roll lands on its own item
+    cand.rows[2].main.scripts.OnClick(cand.rows[2].main)
+    assert.is_false(cand.rows[3]:IsShown()) -- answered items leave the window
+    cand.rows[1].off.scripts.OnClick(cand.rows[1].off)
+    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 81 (1-100)")
+    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 22 (1-99)")
+    assert.are.equal(81, sessions[2]:entryFor("Poohtank").roll)
+    assert.are.equal(22, sessions[1]:entryFor("Poohtank").roll)
+    W.fire("CHAT_MSG_SYSTEM", "Gally rolls 90 (1-100)") -- no button behind it: ignored
+    for _, s in ipairs(sessions) do assert.is_nil(s:entryFor("Gally")) end
+    for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("open", e.status) end
+    W.tick(106)
+    assert.are.equal(0, #open())
+  end)
+
+  it("refuses while an item is still taking rolls, and takes a time", function()
+    W.loot(CORPSE)
+    W.slash("loot 1")
+    W.slash("loot all")
+    assert.matches("still taking rolls", W.printed[#W.printed])
+    assert.are.equal(1, #open())
+    W.slash("close")
+    W.slash("loot all 200")
+    assert.are.equal(2, #open())
+    assert.are.equal(200, open()[1].closesAt - open()[1].openedAt)
+  end)
+
+  it("runs a simulated loot pool through the fake raid", function()
+    _G.IsInRaid = function() return false end
+    _G.IsInGroup = function() return false end
+    W.slash("sim drop gruul the dragonkiller")
+    W.slash("sim drop gruul the dragonkiller")
+    W.slash("loot all 30")
+    assert.are.equal(6, #open())
+    assert.are.equal(0, #W.chat)
+    assert.matches("%[sim%] Loot council: 6 items open for 30 s", table.concat(W.printed, "\n"))
+    for _ = 1, 35 do W.tick(1) end
+    assert.are.equal(0, #open())
+    for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("voting", e.status) end
+  end)
+end)
+
+describe("/tlc loot all across a raid of clients", function()
+  local GROUP = {
+    { name = "Poohtank", class = "PALADIN", leader = true },
+    { name = "Anasazi", class = "ROGUE" }, { name = "Hadur", class = "SHAMAN", assist = true },
+  }
+
+  it("matches a raider's button rolls to the items they answered", function()
+    local leader = W.client({ me = "Poohtank", group = GROUP })
+    local rogue = W.client({ me = "Anasazi", group = GROUP })
+    local all = { leader, rogue }
+    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    W.deliver(all)
+    leader:loot(CORPSE)
+    leader:slash("loot all")
+    W.deliver(all)
+    local cand = rogue.env.ToadsLCCandidateFrame
+    assert.is_true(cand.rows[3]:IsShown())
+    local third, first = cand.rows[3].session.id, cand.rows[1].session.id
+    cand.rows[3].main.scripts.OnClick(cand.rows[3].main)
+    cand.rows[1].main.scripts.OnClick(cand.rows[1].main)
+    assert.are.same({ { 1, 100 }, { 1, 100 } }, rogue.rolls)
+    -- the roll lines reach the leader before the whispers do
+    leader:fire("CHAT_MSG_SYSTEM", "Anasazi rolls 64 (1-100)")
+    leader:fire("CHAT_MSG_SYSTEM", "Anasazi rolls 5 (1-100)")
+    W.deliver(all)
+    local reg = leader.ns.App.registry
+    assert.are.equal(64, reg:get(third):entryFor("Anasazi").roll)
+    assert.are.equal(5, reg:get(first):entryFor("Anasazi").roll)
+  end)
+end)
