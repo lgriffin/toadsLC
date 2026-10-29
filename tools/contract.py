@@ -60,7 +60,7 @@ def main():
     ok &= check("loot.json", loot, "loot schema") and check_loot(loot, priority)
     test_list = json.loads((ROOT / "fixtures/priority.test.json").read_text())
     ok &= check("priority.json", test_list, "test priority list")
-    if len(test_list["items"]) != len(loot["items"]):
+    if sorted(i.get("itemId") for i in test_list["items"]) != sorted(i["itemId"] for i in loot["items"]):
         print("test priority list: does not cover the loot tables; run tools/make_test_priorities.py")
         ok = False
     ok &= check("session.json", json.loads((ROOT / "fixtures/session.sample.json").read_text()), "session sample")
