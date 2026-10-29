@@ -138,9 +138,9 @@ local function buildCandidate()
       cand:Hide()
     end
   end
-  cand.main = button(cand, "Main spec", 96, answer("main"))
+  cand.main = button(cand, "MS", 96, answer("main"))
   cand.main:SetPoint("BOTTOMLEFT", 14, 14)
-  cand.off = button(cand, "Off-spec", 96, answer("offspec"))
+  cand.off = button(cand, "OS", 96, answer("offspec"))
   cand.off:SetPoint("LEFT", cand.main, "RIGHT", 6, 0)
   cand.pass = button(cand, "Pass", 96, answer("pass"))
   cand.pass:SetPoint("LEFT", cand.off, "RIGHT", 6, 0)
@@ -165,7 +165,7 @@ function Frames.showCandidate(s)
   else
     cand.tier:SetText("Your spec is not on the list for this item")
   end
-  cand.off:SetText(string.format("Off-spec (%d)", s.rules.offspecRollMax))
+  cand.off:SetText(string.format("OS (%d)", s.rules.offspecRollMax))
   cand.note:SetText("")
   cand:Show()
 end

@@ -3,7 +3,7 @@
 Loot council for the Toads raid on Spineshatter EU (TBC Classic).
 
 Toads LC puts the guild's agreed class priorities on item tooltips and hands out loot **by
-priority tier first, roll second**. Raiders answer each drop with Main spec, Off-spec or Pass;
+priority tier first, roll second**. Raiders answer each drop with MS (main spec), OS (off-spec) or Pass;
 officers see everyone ranked in a council frame and vote; the raid leader awards. Every roll,
 vote and award is kept, and exported after the raid for the Toads site.
 
@@ -66,8 +66,8 @@ to do anything beyond answering loot.
 - **When the raid leader opens a loot session,** a small window pops up with the item, your
   tier (or "Your spec is not on the list for this item") and a countdown. Type an optional note
   for the council, then press:
-  - **Main spec**: rolls 1-100 for you.
-  - **Off-spec (99)**: rolls 1-99 for you.
+  - **MS** (main spec): rolls 1-100 for you.
+  - **OS (99)** (off-spec): rolls 1-99 for you.
   - **Pass**: you are out for this item.
 - **No addon, or you closed the window?** Just `/roll` for main spec or `/roll 99` for
   off-spec while the countdown runs. The leader's addon reads the roll from chat.
@@ -161,7 +161,7 @@ You answer in the loot window and run the council frame, `/tlc award`, `/tlc rer
 
 Items on your imported list use its priorities; anything else gets a made-up priority over
 the fake raid. Simulated loot never reaches group chat, the export or `/tlc history`. In a
-party, the others see the windows and their Main spec / Off-spec buttons roll for real. It
+party, the others see the windows and their MS / OS buttons roll for real. It
 won't run in a raid group or while a real session is taking rolls, and opening a real session
 stops it.
 
