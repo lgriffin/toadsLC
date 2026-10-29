@@ -58,9 +58,18 @@ end
 local windows = {}
 local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-"
 
--- bounds(f): the window's min and max size; never larger than the screen at the current scale
-local function bounds(f)
+-- scaleOf(f): the chosen scale, or less when the window's smallest size would not fit the screen
+local function scaleOf(f)
   local o, scale = f.sizing, ns.Store.layout().scale
+  local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+  if sw and sw > 0 then scale = math.min(scale, sw / o.minW) end
+  if sh and sh > 0 then scale = math.min(scale, sh / o.minH) end
+  return scale
+end
+
+-- bounds(f): the window's min and max size; never larger than the screen at its scale
+local function bounds(f)
+  local o, scale = f.sizing, f.scale or scaleOf(f)
   local maxW, maxH = o.maxW, o.maxH
   local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
   if sw and sw > 0 then maxW = math.max(o.minW, math.min(maxW, math.floor(sw / scale))) end
@@ -94,7 +103,7 @@ local function saveLayout(f)
   if not point then return end
   ns.Store.layout().frames[f:GetName()] = {
     w = math.floor(f.width + 0.5), h = math.floor(f.height + 0.5),
-    point = point, relPoint = relPoint or point, x = x or 0, y = y or 0,
+    point = point, relPoint = relPoint or point, x = x or 0, y = y or 0, scale = f.scale,
   }
 end
 
@@ -102,13 +111,16 @@ end
 local function fitWindow(f)
   local L = ns.Store.layout()
   local saved = L.frames[f:GetName()]
-  f:SetScale(L.scale)
+  f.scale = scaleOf(f)
+  f:SetScale(f.scale)
   setBounds(f)
   local w, h = clampSize(f, saved and saved.w or f.sizing.w, saved and saved.h or f.sizing.h)
   f:SetSize(w, h)
   f:ClearAllPoints()
   if saved and saved.point then
-    f:SetPoint(saved.point, UIParent, saved.relPoint, saved.x, saved.y)
+    -- offsets are in the window's own scaled units: rescale them so it stays where it was left
+    local k = (saved.scale or f.scale) / f.scale
+    f:SetPoint(saved.point, UIParent, saved.relPoint, saved.x * k, saved.y * k)
   else
     f:SetPoint("CENTER", UIParent, "CENTER", f.sizing.x or 0, f.sizing.y or 0)
   end

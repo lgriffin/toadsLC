@@ -472,11 +472,18 @@ describe("/tlc loot all", function()
     cand.GetPoint = function() return "TOPLEFT", nil, "BOTTOMLEFT", 120, 700 end
     cand.GetWidth, cand.GetHeight = function() return 2000 end, function() return 96 + 2 * 44 end
     cand.grip.scripts.OnMouseUp(cand.grip)
-    assert.are.same({ w = 900, h = 184, point = "TOPLEFT", relPoint = "BOTTOMLEFT", x = 120, y = 700 },
+    assert.are.same({ w = 900, h = 184, point = "TOPLEFT", relPoint = "BOTTOMLEFT", x = 120, y = 700, scale = 1 },
       _G.ToadsLCCharDB.frames.ToadsLCCandidateFrame) -- held to the largest size it allows
 
+    local anchored
+    cand.SetPoint = function(_, ...) anchored = { ... } end
     W.slash("scale 1.25")
     assert.are.equal(1.25, _G.ToadsLCCharDB.scale)
+    assert.are.same({ "TOPLEFT", _G.UIParent, "BOTTOMLEFT", 96, 560 }, anchored) -- stays put on screen
+    _G.UIParent.GetWidth, _G.UIParent.GetHeight = function() return 640 end, function() return 480 end
+    W.slash("scale 2")
+    assert.are.equal(640 / 420, cand.scale) -- shrunk so its smallest size still fits a small screen
+    W.slash("scale 1.25")
     W.slash("scale 7")
     assert.are.equal(1.25, _G.ToadsLCCharDB.scale)
     W.slash("scale reset")
