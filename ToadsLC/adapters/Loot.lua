@@ -57,10 +57,16 @@ end
 -- recording
 ---------------------------------------------------------------------------
 
+-- party(): /tlc loot party on, and in a party rather than a raid: a 5-man practice run
+local function party()
+  return ns.Store.settings().lootParty == true and not IsInRaid() and IsInGroup()
+end
+
 local function wanted(itemId, quality)
   if not itemId or Loot.IGNORE[itemId] then return false end
   if Priority.lookup(ns.Store.priorities(), itemId) then return true end
-  return (quality or 0) >= (ns.Store.settings().lootQuality or 4)
+  local least = party() and 3 or (ns.Store.settings().lootQuality or 4) -- dungeon bosses drop blues
+  return (quality or 0) >= least
 end
 
 -- record{ key, itemId, name, link, boss, zone, sim } -> entry, or nil when already listed
@@ -74,9 +80,10 @@ function Loot.record(o)
   return e
 end
 
--- recording(): only the raid leader and assists record, and only in a raid group
+-- recording(): only the raid leader and assists record, and only in a raid group (or, with
+-- /tlc loot party on, the party leader in a party, rare and up, to practise in a 5-man)
 function Loot.recording()
-  return ns.Store.settings().lootAuto ~= false and IsInRaid() and ns.Roster.canLead()
+  return ns.Store.settings().lootAuto ~= false and (IsInRaid() or party()) and ns.Roster.canLead()
 end
 
 local function sourceOf(slot)

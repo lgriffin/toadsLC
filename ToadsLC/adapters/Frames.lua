@@ -12,7 +12,6 @@ local AMBER = { 1, 0.7, 0.1 }
 local GREEN = { 0.3, 0.9, 0.4 }
 local GREY = { 0.55, 0.55, 0.55 }
 local ORANGE = { 1, 0.5, 0 }
-local ROWS = 30
 local ROW_H = 18
 
 local function colourText(c, text)
@@ -51,23 +50,152 @@ local function itemHover(parent, session)
   return f
 end
 
-local function window(name, title, w, h)
-  local f = CreateFrame("Frame", name, UIParent, "BasicFrameTemplateWithInset")
+---------------------------------------------------------------------------
+-- windows: moved by dragging, resized by the grip in the bottom-right corner. Raiders play on
+-- every size of screen, so each window's size and place, and one scale for them all, are kept
+-- per character (Store.layout) and put back on the next login.
+---------------------------------------------------------------------------
+
+local windows = {}
+local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-"
+
+-- scaleOf(f): the chosen scale, or less when the window's smallest size would not fit the screen
+local function scaleOf(f)
+  local o, scale = f.sizing, ns.Store.layout().scale
+  local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+  if sw and sw > 0 then scale = math.min(scale, sw / o.minW) end
+  if sh and sh > 0 then scale = math.min(scale, sh / o.minH) end
+  return scale
+end
+
+-- bounds(f): the window's min and max size; never larger than the screen at its scale
+local function bounds(f)
+  local o, scale = f.sizing, f.scale or scaleOf(f)
+  local maxW, maxH = o.maxW, o.maxH
+  local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+  if sw and sw > 0 then maxW = math.max(o.minW, math.min(maxW, math.floor(sw / scale))) end
+  if sh and sh > 0 then maxH = math.max(o.minH, math.min(maxH, math.floor(sh / scale))) end
+  return o.minW, o.minH, maxW, maxH
+end
+
+local function clampSize(f, w, h)
+  local minW, minH, maxW, maxH = bounds(f)
+  return math.max(minW, math.min(maxW, w)), math.max(minH, math.min(maxH, h))
+end
+
+local function setBounds(f)
+  local minW, minH, maxW, maxH = bounds(f)
+  if f.SetResizeBounds then
+    f:SetResizeBounds(minW, minH, maxW, maxH)
+  else
+    f:SetMinResize(minW, minH)
+    f:SetMaxResize(maxW, maxH)
+  end
+end
+
+-- resized(f, w, h): reflow the window's content for its new size
+local function resized(f, w, h)
+  f.width, f.height = w, h
+  if f.sizing.layout then f.sizing.layout(f, w, h) end
+end
+
+local function saveLayout(f)
+  local point, _, relPoint, x, y = f:GetPoint()
+  if not point then return end
+  ns.Store.layout().frames[f:GetName()] = {
+    w = math.floor(f.width + 0.5), h = math.floor(f.height + 0.5),
+    point = point, relPoint = relPoint or point, x = x or 0, y = y or 0, scale = f.scale,
+  }
+end
+
+-- fitWindow(f): size and place a window from what this character saved, or its defaults
+local function fitWindow(f)
+  local L = ns.Store.layout()
+  local saved = L.frames[f:GetName()]
+  f.scale = scaleOf(f)
+  f:SetScale(f.scale)
+  setBounds(f)
+  local w, h = clampSize(f, saved and saved.w or f.sizing.w, saved and saved.h or f.sizing.h)
   f:SetSize(w, h)
+  f:ClearAllPoints()
+  if saved and saved.point then
+    -- offsets are in the window's own scaled units: rescale them so it stays where it was left
+    local k = (saved.scale or f.scale) / f.scale
+    f:SetPoint(saved.point, UIParent, saved.relPoint, saved.x * k, saved.y * k)
+  else
+    f:SetPoint("CENTER", UIParent, "CENTER", f.sizing.x or 0, f.sizing.y or 0)
+  end
+  resized(f, w, h)
+end
+
+-- window(name, title, opts): opts.w, opts.h default size; minW, minH, maxW, maxH;
+-- x, y offset from the screen's centre; layout(f, w, h) lays the content out for a size.
+-- The builder calls fitWindow(f) once its content exists.
+local function window(name, title, opts)
+  local f = CreateFrame("Frame", name, UIParent, "BasicFrameTemplateWithInset")
+  f.sizing = opts
+  f.width, f.height = opts.w, opts.h
+  f:SetSize(opts.w, opts.h)
   f:SetPoint("CENTER")
   f:SetMovable(true)
+  f:SetResizable(true)
+  if f.SetDontSavePosition then f:SetDontSavePosition(true) end -- ours to keep, not the client's layout cache
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    saveLayout(self)
+  end)
+  f:SetScript("OnSizeChanged", function(self, w, h)
+    if w and h then resized(self, w, h) end
+  end)
   f:SetClampedToScreen(true)
   f:SetFrameStrata("DIALOG")
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.title:SetPoint("TOP", 0, -5)
   f.title:SetText(title)
   tinsert(UISpecialFrames, name)
+
+  local grip = CreateFrame("Button", nil, f)
+  grip:SetSize(16, 16)
+  grip:SetPoint("BOTTOMRIGHT", -3, 3)
+  grip:SetFrameLevel((f:GetFrameLevel() or 0) + 20)
+  grip:SetNormalTexture(GRIP .. "Up")
+  grip:SetHighlightTexture(GRIP .. "Highlight")
+  grip:SetPushedTexture(GRIP .. "Down")
+  grip:SetScript("OnMouseDown", function(_, which)
+    if which ~= "LeftButton" then return end
+    setBounds(f)
+    f:StartSizing("BOTTOMRIGHT")
+  end)
+  grip:SetScript("OnMouseUp", function()
+    f:StopMovingOrSizing()
+    local w, h = clampSize(f, f:GetWidth() or f.width, f:GetHeight() or f.height)
+    f:SetSize(w, h) -- for clients without resize bounds
+    resized(f, w, h)
+    saveLayout(f)
+  end)
+  f.grip = grip
+
+  windows[#windows + 1] = f
   f:Hide()
   return f
+end
+
+function Frames.scale() return ns.Store.layout().scale end
+
+-- setScale(s): one scale for every Toads LC window, kept per character
+function Frames.setScale(s)
+  ns.Store.layout().scale = s
+  for _, f in ipairs(windows) do fitWindow(f) end
+end
+
+-- resetLayout(): every window back to its default size and place, at scale 1
+function Frames.resetLayout()
+  local L = ns.Store.layout()
+  L.frames, L.scale = {}, 1
+  for _, f in ipairs(windows) do fitWindow(f) end
 end
 
 -- prompt(title, onAccept(text)): one-line text input.
@@ -129,8 +257,9 @@ end
 ---------------------------------------------------------------------------
 
 local cand
-local CAND_ROWS = 6
+local CAND_ROWS, CAND_MAX = 6, 12 -- rows at the default size, and at most
 local CAND_H = 44
+local CAND_BUTTONS = 216 -- the answer buttons, measured from the row's right edge
 
 local function waitingForMe()
   local reg, out = ns.App.registry, {}
@@ -152,8 +281,20 @@ local function tierText(s)
 end
 
 local function buildCandidate()
-  cand = window("ToadsLCCandidateFrame", "Toads LC: loot", 500, 96 + CAND_ROWS * CAND_H)
-  cand:SetPoint("CENTER", 0, 180)
+  cand = window("ToadsLCCandidateFrame", "Toads LC: loot", {
+    w = 500, h = 96 + CAND_ROWS * CAND_H, minW = 420, minH = 96 + CAND_H, maxW = 900, maxH = 96 + CAND_MAX * CAND_H,
+    y = 180, layout = function(f, w, h)
+      f.visible = math.max(1, math.min(CAND_MAX, math.floor((h - 96) / CAND_H)))
+      local rowW = w - 24
+      for _, row in ipairs(f.rows) do
+        row:SetWidth(rowW)
+        row.item:SetWidth(rowW - 80)
+        row.tier:SetWidth(rowW - 44 - CAND_BUTTONS)
+        row.hover:SetWidth(rowW - 4 - CAND_BUTTONS)
+      end
+      if f:IsShown() then Frames.refreshCandidate() end
+    end,
+  })
   cand.offset = 0
   local function answer(row, response)
     return function()
@@ -164,7 +305,7 @@ local function buildCandidate()
     end
   end
   cand.rows = {}
-  for i = 1, CAND_ROWS do
+  for i = 1, CAND_MAX do
     local row = CreateFrame("Frame", nil, cand)
     row:SetSize(476, CAND_H)
     row:SetPoint("TOPLEFT", 12, -28 - (i - 1) * CAND_H)
@@ -184,7 +325,7 @@ local function buildCandidate()
     row.timer:SetPoint("TOPRIGHT", -2, -2)
     row.hover = itemHover(row, function() return row.session end)
     row.hover:SetPoint("LEFT", 2, 0)
-    row.hover:SetSize(256, 36)
+    row.hover:SetSize(280, 36)
     -- BiS and Upgrade both roll 1-100; the council sees BiS ranked first
     row.bis = button(row, "BiS", 40, answer(row, "bis"))
     row.bis:SetPoint("BOTTOMRIGHT", -176, 2)
@@ -204,8 +345,9 @@ local function buildCandidate()
     Frames.refreshCandidate()
   end)
   cand.note = CreateFrame("EditBox", nil, cand, "InputBoxTemplate")
-  cand.note:SetSize(460, 20)
+  cand.note:SetHeight(20)
   cand.note:SetPoint("BOTTOMLEFT", 20, 14)
+  cand.note:SetPoint("BOTTOMRIGHT", -26, 14)
   cand.note:SetAutoFocus(false)
   cand.note:SetMaxLetters(80)
   local hint = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -217,6 +359,7 @@ local function buildCandidate()
     self.acc = 0
     Frames.refreshCandidate()
   end)
+  fitWindow(cand)
 end
 
 -- refreshCandidate(): one row per open session still waiting for my answer; hidden when none
@@ -224,13 +367,14 @@ function Frames.refreshCandidate()
   if not cand then return end
   local list = waitingForMe()
   if #list == 0 then cand:Hide(); return end
-  cand.offset = math.max(0, math.min(cand.offset, #list - CAND_ROWS))
+  local shown = cand.visible
+  cand.offset = math.max(0, math.min(cand.offset, #list - shown))
   cand.title:SetText(#list == 1 and "Toads LC: loot" or string.format("Toads LC: loot (%d items)", #list))
-  cand.more:SetText(#list > CAND_ROWS and string.format("%d-%d of %d (scroll)", cand.offset + 1,
-    math.min(#list, cand.offset + CAND_ROWS), #list) or "")
+  cand.more:SetText(#list > shown and string.format("%d-%d of %d (scroll)", cand.offset + 1,
+    math.min(#list, cand.offset + shown), #list) or "")
   local now = ns.App.now()
   for i, row in ipairs(cand.rows) do
-    local s = list[i + cand.offset]
+    local s = i <= shown and list[i + cand.offset]
     row.session = s
     if not s then
       row:Hide()
@@ -259,7 +403,9 @@ end
 ---------------------------------------------------------------------------
 
 local council
+local ROWS, ROWS_MAX = 30, 40 -- candidate rows at the default size, and at most
 
+-- the Note column takes whatever width the others leave
 local COLS = {
   { key = "name", title = "Name", w = 100 },
   { key = "spec", title = "Spec", w = 96 },
@@ -312,7 +458,17 @@ local function rowMenu(row)
 end
 
 local function buildCouncil()
-  council = window("ToadsLCCouncilFrame", "Toads LC: council", 640, 150 + ROWS * ROW_H)
+  council = window("ToadsLCCouncilFrame", "Toads LC: council", {
+    w = 640, h = 150 + ROWS * ROW_H, minW = 560, minH = 150 + 5 * ROW_H, maxW = 1400, maxH = 150 + ROWS_MAX * ROW_H,
+    layout = function(f, w, h)
+      f.visible = math.max(5, math.min(ROWS_MAX, math.floor((h - 150) / ROW_H)))
+      for _, row in ipairs(f.rows) do
+        row:SetWidth(w - 40)
+        row.cells.note:SetWidth(w - 454)
+      end
+      Frames.refresh()
+    end,
+  })
   council.item = council:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   council.item:SetPoint("TOPLEFT", 16, -32)
   council.itemHover = itemHover(council, function() return shownSession() end)
@@ -337,7 +493,7 @@ local function buildCouncil()
   end
 
   council.rows = {}
-  for i = 1, ROWS do
+  for i = 1, ROWS_MAX do
     local row = CreateFrame("Button", nil, council)
     row:SetSize(600, ROW_H)
     row:SetPoint("TOPLEFT", 12, -72 - (i - 1) * ROW_H)
@@ -378,7 +534,7 @@ local function buildCouncil()
   council.more:SetPoint("TOPRIGHT", -16, -58)
   council:EnableMouseWheel(true)
   council:SetScript("OnMouseWheel", function(self, delta)
-    self.offset = math.max(0, math.min((self.total or 0) - ROWS, self.offset - delta * 3))
+    self.offset = math.max(0, math.min((self.total or 0) - self.visible, self.offset - delta * 3))
     Frames.refresh()
   end)
 
@@ -393,14 +549,16 @@ local function buildCouncil()
     { key = "votes", via = "votes" }, { key = "proposal", via = "proposal" }, { key = "list", via = "list" },
     { key = "listRoll", via = "highest-roll" }, { key = "highest", via = "highest-roll" },
   }
+  council.awardOrder = {}
   for i, d in ipairs(defs) do
     local b = button(council, "", 120, function(self)
       local s = shownSession()
       if s and self.player then ns.App.award(s.id, self.player, self.via, self.reason) end
     end)
     b.via = d.via
-    b:SetPoint("BOTTOMLEFT", 14 + ((i - 1) % 5) * 122, 38)
+    b:SetPoint("BOTTOMLEFT", 14 + (i - 1) * 122, 38)
     council.buttons[d.key] = b
+    council.awardOrder[i] = b
   end
   council.awardTo = button(council, "Award to…", 100, function()
     local s = shownSession()
@@ -436,7 +594,7 @@ local function buildCouncil()
       end
     end)
   end)
-  council.propose:SetPoint("BOTTOMRIGHT", -14, 12)
+  council.propose:SetPoint("BOTTOMRIGHT", -24, 12)
 
   council:SetScript("OnUpdate", function(self, dt)
     self.acc = (self.acc or 0) + dt
@@ -445,6 +603,7 @@ local function buildCouncil()
     local s = shownSession()
     if s and s.phase == "open" then Frames.refresh() end
   end)
+  fitWindow(council)
 end
 
 local function setButton(b, label, player, reason)
@@ -511,15 +670,16 @@ function Frames.refresh()
 
   local myVote = s.votes[Priority.nameKey(me)]
   council.total = #rows
-  council.offset = math.max(0, math.min(council.offset, #rows - ROWS))
-  if #rows > ROWS then
+  local shown = council.visible
+  council.offset = math.max(0, math.min(council.offset, #rows - shown))
+  if #rows > shown then
     council.more:SetText(string.format("%d-%d of %d (scroll)", council.offset + 1,
-      math.min(#rows, council.offset + ROWS), #rows))
+      math.min(#rows, council.offset + shown), #rows))
   else
     council.more:SetText("")
   end
   for i, row in ipairs(council.rows) do
-    local e = rows[i + council.offset]
+    local e = i <= shown and rows[i + council.offset]
     row.entry = e
     if not e then
       row:Hide()
@@ -580,6 +740,14 @@ function Frames.refresh()
   B.list.via = "list"
   setButton(B.listRoll, "List (roll)", canAward and opts.listRoll)
   setButton(B.highest, "Highest roll", canAward and not opts.listRoll and opts.highest)
+  local x = 14 -- the award buttons shown, side by side, so a narrow window still fits them
+  for _, b in ipairs(council.awardOrder) do
+    if b:IsShown() then
+      b:ClearAllPoints()
+      b:SetPoint("BOTTOMLEFT", x, 38)
+      x = x + 122
+    end
+  end
   for _, b in pairs({ council.awardTo, council.noAward }) do b:SetShown(canAward) end
   council.closeBtn:SetShown(leader and s.phase == "open")
   council.reroll:SetShown(leader and s.phase == "voting" and r.tie)
@@ -614,24 +782,46 @@ end
 ---------------------------------------------------------------------------
 
 local lootFrame
-local LOOT_ROWS = 16
+local LOOT_ROWS, LOOT_MAX = 16, 30 -- rows at the default size, and at most
+local LOOT_H = 22
 
 local function lootEntries() return ns.Loot.list.entries end
 
 local function buildLoot()
-  lootFrame = window("ToadsLCLootFrame", "Toads LC: raid loot", 560, 110 + LOOT_ROWS * 22)
+  -- the Item column takes whatever width Boss, Status and the buttons leave
+  lootFrame = window("ToadsLCLootFrame", "Toads LC: raid loot", {
+    w = 580, h = 110 + LOOT_ROWS * LOOT_H, minW = 480, minH = 110 + 4 * LOOT_H, maxW = 1100, maxH = 110 + LOOT_MAX * LOOT_H,
+    layout = function(f, w, h)
+      f.visible = math.max(4, math.min(LOOT_MAX, math.floor((h - 110) / LOOT_H)))
+      local rowW = w - 30
+      local itemW = rowW - 324
+      local bossX = 28 + itemW + 4
+      f.heads.boss:SetPoint("TOPLEFT", 12 + bossX, -32)
+      f.heads.status:SetPoint("TOPLEFT", 12 + bossX + 100, -32)
+      for _, row in ipairs(f.rows) do
+        row:SetWidth(rowW)
+        row.item:SetWidth(itemW)
+        row.hover:SetWidth(itemW)
+        row.boss:SetPoint("LEFT", bossX, 0)
+        row.status:SetPoint("LEFT", bossX + 100, 0)
+      end
+      Frames.refreshLoot()
+    end,
+  })
   lootFrame.offset = 0
-  local heads = { { "#", 16 }, { "Item", 40 }, { "Boss", 270 }, { "Status", 370 } }
+  lootFrame.heads = {}
+  local heads = { { "num", "#", 16 }, { "item", "Item", 40 }, { "boss", "Boss", 270 }, { "status", "Status", 370 } }
   for _, h in ipairs(heads) do
     local fs = lootFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", h[2], -32)
-    fs:SetText(h[1])
+    fs:SetPoint("TOPLEFT", h[3], -32)
+    fs:SetText(h[2])
+    lootFrame.heads[h[1]] = fs
   end
   lootFrame.rows = {}
-  for i = 1, LOOT_ROWS do
+  for i = 1, LOOT_MAX do
     local row = CreateFrame("Frame", nil, lootFrame)
-    row:SetSize(530, 22)
-    row:SetPoint("TOPLEFT", 12, -46 - (i - 1) * 22)
+    row:SetSize(530, LOOT_H)
+    row:SetPoint("TOPLEFT", 12, -46 - (i - 1) * LOOT_H)
     row.num = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.num:SetPoint("LEFT", 4, 0)
     row.item = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -664,7 +854,7 @@ local function buildLoot()
   end
   lootFrame:EnableMouseWheel(true)
   lootFrame:SetScript("OnMouseWheel", function(self, delta)
-    self.offset = math.max(0, math.min(#lootEntries() - LOOT_ROWS, self.offset - delta * 3))
+    self.offset = math.max(0, math.min(#lootEntries() - self.visible, self.offset - delta * 3))
     Frames.refreshLoot()
   end)
   lootFrame.footer = lootFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -682,7 +872,8 @@ local function buildLoot()
       if text and text:lower() == "yes" then ns.Loot.clear() end
     end)
   end)
-  lootFrame.clear:SetPoint("BOTTOMRIGHT", -14, 12)
+  lootFrame.clear:SetPoint("BOTTOMRIGHT", -24, 12)
+  fitWindow(lootFrame)
 end
 
 local STATUS_COLOUR = { waiting = AMBER, awarded = GREEN, none = GREY }
@@ -692,10 +883,11 @@ function Frames.refreshLoot()
   local entries = lootEntries()
   local lead = ns.Roster.canLead()
   local busy = ns.App.registry:rolling() ~= nil
-  lootFrame.offset = math.max(0, math.min(lootFrame.offset, #entries - LOOT_ROWS))
+  local shown = lootFrame.visible
+  lootFrame.offset = math.max(0, math.min(lootFrame.offset, #entries - shown))
   for i, row in ipairs(lootFrame.rows) do
     local n = i + lootFrame.offset
-    local e = entries[n]
+    local e = i <= shown and entries[n]
     row.entry = e
     if not e then
       row:Hide()
@@ -743,7 +935,10 @@ function Frames.lootChanged() Frames.refreshLoot() end
 local ioFrame
 
 local function buildIO()
-  ioFrame = window("ToadsLCIOFrame", "Toads LC", 560, 420)
+  ioFrame = window("ToadsLCIOFrame", "Toads LC", {
+    w = 560, h = 420, minW = 360, minH = 200, maxW = 1400, maxH = 1000,
+    layout = function(f, w) if f.box then f.box:SetWidth(w - 60) end end,
+  })
   local scroll = CreateFrame("ScrollFrame", nil, ioFrame, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", 14, -32)
   scroll:SetPoint("BOTTOMRIGHT", -34, 48)
@@ -770,7 +965,8 @@ local function buildIO()
     ioFrame.status:SetText(msg)
     if ok then ioFrame.status:SetTextColor(GREEN[1], GREEN[2], GREEN[3]) else ioFrame.status:SetTextColor(1, 0.3, 0.3) end
   end)
-  ioFrame.action:SetPoint("BOTTOMRIGHT", -14, 12)
+  ioFrame.action:SetPoint("BOTTOMRIGHT", -24, 12)
+  fitWindow(ioFrame)
 end
 
 function Frames.showExport(text, status)

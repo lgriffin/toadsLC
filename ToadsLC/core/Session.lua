@@ -567,11 +567,68 @@ function Session:resultLine()
                    first.roll, tail)
 end
 
-function Session:awardLine()
+-- Raid chat lines the loot master can reword with /tlc announce. {name} is a placeholder;
+-- one that has nothing to say for this award is left empty, and so are any brackets it leaves.
+Session.AWARD_TEMPLATE = "[ToadsLC] {item} awarded to {name} ({details})."
+Session.TRADE_TEMPLATE = "[ToadsLC] {item} traded to {name}."
+Session.PLACEHOLDERS = { "item", "name", "details", "response", "spec", "tier", "roll", "by" }
+
+local KNOWN = {}
+for _, k in ipairs(Session.PLACEHOLDERS) do KNOWN[k] = true end
+
+-- empty(part, fields): part names a placeholder that has nothing to fill it
+local function empty(part, fields)
+  for k in part:gmatch("{(%w+)}") do
+    if KNOWN[k:lower()] and fields[k:lower()] == nil then return true end
+  end
+  return false
+end
+
+-- fill(template, fields) -> text: {key} becomes fields[key]; unknown {words} stay as typed.
+-- Inside (...) or [...], a comma-separated part with an empty placeholder is dropped whole, so
+-- "({response}, rolled {roll})" reads "(BiS)" with no roll, and the brackets go if nothing is left.
+function Session.fill(template, fields)
+  local function group(open, inner, close)
+    local kept = {}
+    for part in (inner .. ","):gmatch("([^,]*),") do
+      if not empty(part, fields) and part:match("%S") then kept[#kept + 1] = part:match("^%s*(.-)%s*$") end
+    end
+    return #kept > 0 and (open .. table.concat(kept, ", ") .. close) or ""
+  end
+  local text = template:gsub("(%()([^()]*)(%))", group):gsub("(%[)([^%[%]]*)(%])", group)
+  text = text:gsub("{(%w+)}", function(k)
+    local v = fields[k:lower()]
+    if v == nil then return KNOWN[k:lower()] and "" or nil end
+    return tostring(v)
+  end)
+  text = text:gsub("  +", " ")
+  return (text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+([%.,!])", "%1"))
+end
+
+local RESPONSE = { bis = "BiS", main = "Upgrade", offspec = "OffSpec" }
+
+-- awardFields() -> the placeholders for the award: item (link), name, details ("Fury, tier 1,
+-- rolled 87"), response (BiS / Upgrade / OffSpec), spec, tier, roll
+function Session:awardFields()
+  local f = { item = self.itemLink or self.itemName, name = self.awardedTo or "" }
+  local e = self.awardedTo and self:entryFor(self.awardedTo)
+  if e then
+    -- a button press with no roll yet has a response but no max
+    local off = e.max == self.rules.offspecRollMax or e.response == "offspec"
+    local label, tier = self:describe(e)
+    if off then label, tier = "OffSpec", nil end
+    f.spec, f.tier, f.roll = label, tier, e.roll
+    f.response = off and "OffSpec" or RESPONSE[e.response]
+    local desc = off and label or who(self, e, true)
+    f.details = e.roll and strformat("%s, rolled %d", desc, e.roll) or desc
+  end
+  return f
+end
+
+-- awardLine(template): the award for raid chat, worded by template (default AWARD_TEMPLATE)
+function Session:awardLine(template)
   if not self.awardedTo then return strformat("[ToadsLC] %s: not awarded.", self.itemName) end
-  local e = self:entryFor(self.awardedTo)
-  if not e or not e.roll then return strformat("[ToadsLC] %s: %s.", self.itemName, self.awardedTo) end
-  return strformat("[ToadsLC] %s: %s (%s, rolled %d)", self.itemName, self.awardedTo, who(self, e, true), e.roll)
+  return Session.fill(template or Session.AWARD_TEMPLATE, self:awardFields())
 end
 
 ---------------------------------------------------------------------------

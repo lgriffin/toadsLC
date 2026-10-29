@@ -15,8 +15,10 @@ local HELP = {
   "/tlc loot all [seconds]  open every item still to hand out at once; raiders answer each in one window",
   "/tlc loot roll <n> [seconds]  plain priority roll for item n",
   "/tlc loot announce | list | add <item> | remove <n> | clear | auto on|off",
+  "/tlc loot party on|off  practise in a 5-man: record party drops too (rare and up) when you lead",
   "/tlc trade  what is still to trade to the winners; a trade with one puts their items in by itself",
   "/tlc trade done <name> | on | off  mark a winner's items handed over; turn the trade filling on or off",
+  "/tlc announce  the raid chat lines for awards and trades; /tlc announce award|trade on | off | reset | <text>",
   "/tlc award [name] [reason]  award the last session (default: what the list says)",
   "/tlc close  close responses on the last session",
   "/tlc reroll  re-roll the tied names on the last session",
@@ -28,6 +30,8 @@ local HELP = {
   "/tlc sim drop [boss | raid | item]  fake a kill whose drops only go on the loot list",
   "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc status | /tlc history | /tlc tooltip on|off",
+  "/tlc scale <0.5-2> | reset  make every Toads LC window bigger or smaller; reset puts them back",
+  "  (drag a window's bottom-right corner to resize it; sizes and places are kept per character)",
   "/tlc debug [item]  why the tooltip does or doesn't show priorities",
 }
 
@@ -85,8 +89,16 @@ function handlers.loot(rest)
     local st = ns.Store.settings()
     if arg == "on" then st.lootAuto = true elseif arg == "off" then st.lootAuto = false else st.lootAuto = not st.lootAuto end
     ns.Chat.print("Recording raid drops on the loot list " .. (st.lootAuto and "on" or "off") .. ".")
+  elseif sub == "party" then
+    local st = ns.Store.settings()
+    if arg == "on" then st.lootParty = true elseif arg == "off" then st.lootParty = false else st.lootParty = not st.lootParty end
+    ns.Chat.print(st.lootParty and "Recording party drops too, rare and up, for practice in a 5-man. /tlc loot party off to stop."
+      or "Recording drops in raids only.")
+    if st.lootParty and st.lootAuto == false then
+      ns.Chat.print("Recording corpses is off, so nothing is recorded yet: /tlc loot auto on.")
+    end
   else
-    ns.Chat.print("Usage: /tlc loot [n | next | all | roll <n> | announce | list | add <item> | remove <n> | clear | auto on|off]")
+    ns.Chat.print("Usage: /tlc loot [n | next | all | roll <n> | announce | list | add <item> | remove <n> | clear | auto on|off | party on|off]")
   end
 end
 
@@ -101,6 +113,56 @@ function handlers.trade(rest)
     ns.Chat.print("Putting awarded items into trades " .. sub .. ".")
   else
     ns.Chat.print("Usage: /tlc trade [done <name> | on | off]")
+  end
+end
+
+-- /tlc announce [award | trade] [on | off | reset | <text>]
+local ANNOUNCE = {
+  award = { toggle = "announceAward", text = "awardMessage", default = "AWARD_TEMPLATE", what = "Awards" },
+  trade = { toggle = "announceTrade", text = "tradeMessage", default = "TRADE_TEMPLATE", what = "Trades" },
+}
+
+local function sample(which, text)
+  local S = ns.Session
+  local fields = { item = "[Dragonspine Trophy]", name = "Anasazi", details = "Rogue, tier 1, rolled 87",
+                   response = "BiS", spec = "Rogue", tier = 1, roll = 87, by = ns.Roster.me() }
+  return S.fill(text or S[ANNOUNCE[which].default], fields)
+end
+
+local function showAnnounce()
+  local set, S = ns.Store.settings(), ns.Session
+  for _, which in ipairs({ "award", "trade" }) do
+    local a = ANNOUNCE[which]
+    local text = set[a.text] or S[a.default]
+    ns.Chat.print(string.format("%s in raid chat: %s%s. %s", a.what, set[a.toggle] == false and "off" or "on",
+      set[a.text] and "" or " (default wording)", text))
+    ns.Chat.print("  e.g. " .. sample(which, text))
+  end
+  ns.Chat.print("Placeholders: {" .. table.concat(S.PLACEHOLDERS, "}, {") .. "} ({by} is who traded it).")
+  ns.Chat.print("Change with /tlc announce award|trade <text>, on, off or reset.")
+end
+
+function handlers.announce(rest)
+  local which, arg = words(rest)
+  local a = ANNOUNCE[which]
+  if which == "" then return showAnnounce() end
+  if not a then
+    ns.Chat.print("Usage: /tlc announce [award | trade] [on | off | reset | <text with {item} {name} ...>]")
+    return
+  end
+  local set, lower = ns.Store.settings(), arg:lower()
+  if lower == "on" or lower == "off" then
+    set[a.toggle] = lower == "on"
+    ns.Chat.print(a.what .. " announced in raid chat: " .. lower .. ".")
+  elseif lower == "reset" then
+    set[a.text] = nil
+    ns.Chat.print(a.what .. " back to the default wording: " .. sample(which))
+  elseif arg == "" then
+    showAnnounce()
+  else
+    set[a.text] = arg
+    set[a.toggle] = true
+    ns.Chat.print(a.what .. " will read: " .. sample(which, arg))
   end
 end
 
@@ -148,6 +210,23 @@ function handlers.tooltip(rest)
   local s = ns.Store.settings()
   if rest == "on" then s.tooltip = true elseif rest == "off" then s.tooltip = false else s.tooltip = not s.tooltip end
   ns.Chat.print("Tooltip priorities " .. (s.tooltip and "on" or "off") .. ".")
+end
+
+function handlers.scale(rest)
+  rest = rest:lower()
+  if rest == "reset" then
+    ns.Frames.resetLayout()
+    ns.Chat.print("Windows back to their default size, place and scale.")
+    return
+  end
+  local n = tonumber(rest)
+  if n and n >= 0.5 and n <= 2 then
+    ns.Frames.setScale(n)
+    ns.Chat.print(string.format("Window scale %.2f.", n))
+  else
+    ns.Chat.print(string.format("Window scale is %.2f. Usage: /tlc scale <0.5-2> | reset. "
+      .. "Drag a window's bottom-right corner to resize it.", ns.Frames.scale()))
+  end
 end
 
 function handlers.help()

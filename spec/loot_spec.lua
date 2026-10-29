@@ -124,6 +124,31 @@ describe("/tlc loot in a fake client", function()
     assert.are.equal(3, #entries())
   end)
 
+  it("records a party leader's drops, rare and up, only with /tlc loot party on", function()
+    _G.IsInRaid = function() return false end
+    W.loot(CORPSE)
+    assert.are.equal(0, #entries())
+    W.slash("loot party on")
+    W.loot(CORPSE)
+    assert.are.equal(4, #entries()) -- the blue Bladespire Warbands too, never the badge
+    assert.are.equal("Bladespire Warbands", entries()[4].name)
+    W.group[1].leader = false
+    W.loot({ { 28796, "Malefic Mask of the Shadows", 4, GRUUL } })
+    assert.are.equal(4, #entries()) -- not the party leader
+    W.group[1].leader = true
+    _G.IsInRaid = function() return true end
+    W.loot({ { 28797, "Brute Cloak of the Ogre-Magi", 3, GRUUL } })
+    assert.are.equal(4, #entries()) -- in a raid, blues stay out as before
+    W.slash("loot auto off")
+    W.slash("loot party on")
+    assert.matches("Recording corpses is off", printed())
+    W.slash("loot auto on")
+    W.slash("loot party off")
+    _G.IsInRaid = function() return false end
+    W.loot({ { 28796, "Malefic Mask of the Shadows", 4, GRUUL } })
+    assert.are.equal(4, #entries())
+  end)
+
   it("starts an item from the list, announces it, and marks it through to the award", function()
     W.loot(CORPSE)
     W.slash("loot roll 1 30")
@@ -429,6 +454,41 @@ describe("/tlc loot all", function()
     for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("open", e.status) end
     W.tick(106)
     assert.are.equal(0, #open())
+  end)
+
+  it("resizes its windows by the corner grip, shows as many rows as fit, and keeps the size per character", function()
+    W.loot(CORPSE)
+    W.slash("loot all") -- three items, one row each
+    local cand = _G.ToadsLCCandidateFrame
+    local function shownRows()
+      local n = 0
+      for _, row in ipairs(cand.rows) do if row.shown then n = n + 1 end end
+      return n
+    end
+    assert.are.equal(3, shownRows())
+    cand.scripts.OnSizeChanged(cand, 470, 96 + 2 * 44) -- dragged shorter: two rows and a scroll hint
+    assert.are.equal(2, shownRows())
+    assert.matches("1%-2 of 3", cand.more.text)
+    cand.GetPoint = function() return "TOPLEFT", nil, "BOTTOMLEFT", 120, 700 end
+    cand.GetWidth, cand.GetHeight = function() return 2000 end, function() return 96 + 2 * 44 end
+    cand.grip.scripts.OnMouseUp(cand.grip)
+    assert.are.same({ w = 900, h = 184, point = "TOPLEFT", relPoint = "BOTTOMLEFT", x = 120, y = 700, scale = 1 },
+      _G.ToadsLCCharDB.frames.ToadsLCCandidateFrame) -- held to the largest size it allows
+
+    local anchored
+    cand.SetPoint = function(_, ...) anchored = { ... } end
+    W.slash("scale 1.25")
+    assert.are.equal(1.25, _G.ToadsLCCharDB.scale)
+    assert.are.same({ "TOPLEFT", _G.UIParent, "BOTTOMLEFT", 96, 560 }, anchored) -- stays put on screen
+    _G.UIParent.GetWidth, _G.UIParent.GetHeight = function() return 640 end, function() return 480 end
+    W.slash("scale 2")
+    assert.are.equal(640 / 420, cand.scale) -- shrunk so its smallest size still fits a small screen
+    W.slash("scale 1.25")
+    W.slash("scale 7")
+    assert.are.equal(1.25, _G.ToadsLCCharDB.scale)
+    W.slash("scale reset")
+    assert.are.equal(1, _G.ToadsLCCharDB.scale)
+    assert.are.same({}, _G.ToadsLCCharDB.frames)
   end)
 
   it("refuses while an item is still taking rolls, and takes a time", function()

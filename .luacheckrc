@@ -6,7 +6,7 @@ exclude_files = { ".luarocks", "lua_modules" }
 
 -- WoW client globals the adapters use
 local wow = {
-  "ToadsLCDB", "SLASH_TOADSLC1", "SLASH_TOADSLC2", "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames",
+  "ToadsLCDB", "ToadsLCCharDB", "SLASH_TOADSLC1", "SLASH_TOADSLC2", "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames",
 }
 local wow_read = {
   "Ambiguate", "C_AddOns", "C_ChatInfo", "C_Timer", "CanInspect", "CheckInteractDistance", "ClearInspectPlayer",

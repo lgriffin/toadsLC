@@ -317,6 +317,18 @@ describe("/tlc sim", function()
     assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
   end)
 
+  it("puts a window back at this character's saved size", function()
+    W.install({ charDb = { scale = 1, frames = { ToadsLCLootFrame = { w = 700, h = 110 + 5 * 22, point = "CENTER",
+      relPoint = "CENTER", x = 0, y = 0 } } } })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.slash("sim drop gruul the dragonkiller")
+    W.slash("loot")
+    local f = _G.ToadsLCLootFrame
+    assert.are.equal(700, f.width)
+    assert.are.equal(5, f.visible)
+  end)
+
   it("chooses a boss's drops, or one item, from the loot tables", function()
     local zone, boss, items = W.ns.Sim.choose("gruul the dragonkiller")
     assert.are.equal("Gruul's Lair", zone)
@@ -432,6 +444,21 @@ describe("Chat", function()
     for _, l in ipairs(lines) do assert.is_true(#l <= 250) end
     local long = string.rep("x", 600)
     assert.are.equal(long, table.concat(ns.Chat.split(long)))
+  end)
+
+  it("never cuts inside an item link", function()
+    W.install()
+    local ns = W.load()
+    local link = "|cffa335ee|Hitem:29765::::::::70:::::|h[Leggings of the Fallen Hero]|h|r"
+    for pad = 150, 240, 7 do
+      local lines = ns.Chat.split(string.rep("y", pad) .. " grats " .. link .. " traded to Gally.")
+      local whole = false
+      for _, l in ipairs(lines) do
+        assert.is_true(#l <= 250)
+        if l:find(link, 1, true) then whole = true end
+      end
+      assert.is_true(whole, "link cut with pad " .. pad)
+    end
   end)
 end)
 

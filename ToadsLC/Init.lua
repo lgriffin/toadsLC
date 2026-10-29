@@ -67,7 +67,8 @@ local function onChange(s, what)
         Session.REROLL_SECONDS), true)
     end
   elseif what == "AWARD" then
-    if s:isLeader(me) then App.announce(s, s:awardLine(), true) end
+    local set = Store.settings()
+    if s:isLeader(me) and set.announceAward ~= false then App.announce(s, s:awardLine(set.awardMessage), true) end
     ns.Trade.onAward(s)
   elseif what == "STATE" then
     Frames.sessionsChanged()

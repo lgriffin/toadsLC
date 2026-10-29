@@ -82,6 +82,13 @@ to do anything beyond answering loot.
 
 Only your first roll counts. Rolls outside 1-100 or 1-99 are ignored.
 
+**Window too big or too small for your screen?** Every Toads LC window (the loot window, the
+council frame, the raid loot list and the import/export window) moves by dragging its title and
+resizes by dragging its bottom-right corner; the lists show as many rows as fit and scroll with
+the mouse wheel. `/tlc scale 0.8` (anything from 0.5 to 2) makes them all smaller or bigger, and
+`/tlc scale reset` puts every window back to its default size, place and scale. Sizes, places and
+scale are kept per character.
+
 ## Raid night for the leader and officers
 
 ### Before the raid
@@ -124,6 +131,8 @@ From chat:
   didn't see); `/tlc loot remove 3` takes item 3 off.
 - `/tlc loot clear` empties the list. It also empties itself 12 hours after the last change.
 - `/tlc loot auto off` stops recording corpses (`on` starts again).
+- `/tlc loot party on` records in a party you lead too (rare and up), to practise in a 5-man;
+  see [docs/TESTING-5MAN.md](docs/TESTING-5MAN.md). `off` goes back to raids only.
 
 One item at a time, or the whole pool at once: while anything is taking rolls, nothing else can
 start until it closes. An item nobody was awarded can be started again.
@@ -188,6 +197,38 @@ Stacks are never put in for you, so a stack of several of the same item has to b
 Soulbound raid drops can only be traded for two hours after they were looted; the game refuses
 the trade after that.
 
+### Raid chat announcements
+
+So everyone can see where the loot went, two lines go to raid chat by themselves:
+
+- **When an item is awarded**, from the session leader (also as a raid warning with assist):
+  `[ToadsLC] [Dragonspine Trophy] awarded to Anasazi (Rogue, tier 1, rolled 41).`
+- **When it is traded to the winner**, from whoever traded it, one line per item:
+  `[ToadsLC] [Dragonspine Trophy] traded to Anasazi.`
+
+The loot master can reword either one. Type `/tlc announce` to see both, with an example, and
+change them with your own text and any of these placeholders:
+
+| Placeholder | Becomes |
+|---|---|
+| `{item}` | the item link |
+| `{name}` | the winner |
+| `{details}` | spec, tier and roll, as in the default line (`Rogue, tier 1, rolled 41`) |
+| `{response}` | what they pressed: BiS, Upgrade or OffSpec |
+| `{spec}`, `{tier}`, `{roll}` | each on its own |
+| `{by}` | who traded it (trade line only) |
+
+```
+/tlc announce award Grats {name} on {item} ({response}, rolled {roll})!
+/tlc announce trade {item} handed to {name} by {by}.
+/tlc announce award off        (or on; trade works the same)
+/tlc announce award reset      (back to the default wording)
+```
+
+A placeholder with nothing to fill it (no roll on a hand-picked award, say) is left out. Inside
+brackets, the whole comma-separated part goes with it: `({response}, rolled {roll})` reads
+`(BiS)` when there is no roll, and the brackets go too if nothing is left. The wording is saved with your settings.
+
 ### After the raid
 
 1. The raid leader types `/tlc export`. A window opens with the night's loot as JSON,
@@ -247,6 +288,9 @@ party, the others see the windows and their BiS / Upgrade / OffSpec buttons roll
 won't run in a raid group or while a real session is taking rolls, and opening a real session
 stops it.
 
+To test the real thing with five players in a dungeon, follow
+[docs/TESTING-5MAN.md](docs/TESTING-5MAN.md).
+
 ## How the winner is decided
 
 - A main-spec roll (1-100) always beats an off-spec roll (1-99).
@@ -287,8 +331,11 @@ stops it.
 | `/tlc loot announce` / `list` | leader or assist / anyone | post the waiting items to raid chat / print the list to you |
 | `/tlc loot add <item>` / `remove <n>` / `clear` | leader or assist | change the list by hand |
 | `/tlc loot auto on` / `off` | leader or assist | record corpses you loot in a raid, or not |
+| `/tlc loot party on` / `off` | party leader | record corpses in a party too, rare and up, for a 5-man test run |
 | `/tlc trade` | whoever holds the loot | what is still to trade to the winners; opening a trade with one puts their items in |
 | `/tlc trade done <name>` / `on` / `off` | whoever holds the loot | mark a winner's items handed over; turn the trade filling on or off |
+| `/tlc announce` | leader / whoever holds the loot | show the award and trade lines posted to raid chat |
+| `/tlc announce award` / `trade` `<text>` / `on` / `off` / `reset` | leader / whoever holds the loot | reword a line with placeholders, turn it on or off, or go back to the default |
 | `/tlc close` | leader | close responses on the last session early |
 | `/tlc award` | leader | award the last session to who the list says |
 | `/tlc award <name> [reason]` | leader | award to someone else, recorded as an override |
