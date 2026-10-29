@@ -2,6 +2,7 @@
 
     python3 tools/package.py            # writes build/ToadsLC-<version>.zip
     python3 tools/package.py --check    # only checks the .toc against the folder
+    python3 tools/package.py --version v0.2.1   # stamps that version into the zipped .toc (release tags)
 
 The zip holds one top-level folder, ToadsLC/, named like its .toc (the client skips an
 addon whose folder and .toc names differ). Inside it are the .toc and exactly the files the
@@ -63,16 +64,22 @@ def problems(addon_dir):
     return found
 
 
-def build(addon_dir, out_dir):
+def build(addon_dir, out_dir, version=None):
+    """Write the zip; version (x.y.z) replaces the .toc's ## Version in the zipped copy."""
     meta, files = read_toc(addon_dir)
+    version = version or meta["Version"]
+    toc = f"{addon_dir.name}.toc"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{addon_dir.name}-{meta['Version']}.zip"
+    out = out_dir / f"{addon_dir.name}-{version}.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for rel in [f"{addon_dir.name}.toc"] + files:
+        for rel in [toc] + files:
             info = zipfile.ZipInfo(f"{addon_dir.name}/{rel}", FIXED_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            z.writestr(info, (addon_dir / rel).read_bytes())
+            data = (addon_dir / rel).read_bytes()
+            if rel == toc:
+                data = re.sub(rb"(?m)^(##\s*Version:).*?(\r?)$", rb"\g<1> " + version.encode() + rb"\g<2>", data)
+            z.writestr(info, data)
     return out
 
 
@@ -86,7 +93,14 @@ def main(argv):
     if "--check" in argv:
         print("package: ok")
         return 0
-    out = build(addon_dir, ROOT / "build")
+    version = None
+    if "--version" in argv:
+        i = argv.index("--version")
+        version = argv[i + 1].lstrip("v") if i + 1 < len(argv) else ""
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            print(f"package: --version wants x.y.z or vx.y.z, got {version!r}", file=sys.stderr)
+            return 1
+    out = build(addon_dir, ROOT / "build", version)
     print(out.relative_to(ROOT))
     return 0
 

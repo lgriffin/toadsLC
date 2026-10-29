@@ -1,7 +1,7 @@
 name: release
 
-# Push a tag named after the .toc's version (v0.1.0 for "## Version: 0.1.0") to publish
-# ToadsLC-<version>.zip on the repo's Releases page.
+# Push a tag like v0.2.1 to publish ToadsLC-0.2.1.zip on the repo's Releases page. The tag
+# sets the version: it is stamped into the zipped ToadsLC.toc, whatever the repo's copy says.
 on:
   push:
     tags: ["v*"]
@@ -14,15 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Tag matches the .toc version
-        run: |
-          version=$(sed -n 's/^## Version: *//p' ToadsLC/ToadsLC.toc | tr -d '\r')
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match ## Version: $version in ToadsLC.toc"
-            exit 1
-          fi
       - name: Build the release zip
-        run: python3 tools/package.py
+        run: python3 tools/package.py --version "$GITHUB_REF_NAME"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
