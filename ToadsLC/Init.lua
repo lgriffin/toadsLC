@@ -8,6 +8,8 @@ ns.App = App
 local Codec, Priority, Session = ns.Codec, ns.Priority, ns.Session
 local Store, Roster, Chat, Comms, Frames = ns.Store, ns.Roster, ns.Chat, ns.Comms, ns.Frames
 
+local lastBoss = ""
+
 App.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(addonName, "Version") or "dev"
 
 -- v1 runs on the TBC Classic client only; the WoW Forever port replaces the adapters.
@@ -18,7 +20,9 @@ end
 
 function App.now() return GetServerTime and GetServerTime() or time() end
 
-local lastBoss = ""
+-- boss(): the last boss killed (ENCOUNTER_END), for loot recorded off a corpse
+function App.boss() return lastBoss end
+
 local wasGrouped = false
 local loginTime = 0
 
@@ -68,6 +72,7 @@ local function onChange(s, what)
     Frames.sessionsChanged()
   end
   persist(s)
+  ns.Loot.onSession(s)
   if what ~= "SESSION_OPEN" then Frames.refresh() end
   ns.Sim.onChange(s, what)
 end
@@ -86,7 +91,7 @@ end
 -- actions
 ---------------------------------------------------------------------------
 
-local function parseItem(text)
+function App.parseItem(text)
   text = text and text:match("^%s*(.-)%s*$") or ""
   if text == "" then return nil end
   local itemId = tonumber(text:match("item:(%d+)"))
@@ -104,12 +109,19 @@ local function parseItem(text)
   return itemId, name, link or ("[" .. name .. "]")
 end
 
-function App.open(itemText, seconds, mode)
+-- open(itemText, seconds, mode [, entry]) -> session: entry is a loot list entry, whose item,
+-- zone and boss are used
+function App.open(itemText, seconds, mode, entry)
   if not Roster.canLead() then
     Chat.print("You need raid lead or assist to start a " .. mode .. ".")
     return
   end
-  local itemId, name, link = parseItem(itemText)
+  local itemId, name, link
+  if entry then
+    itemId, name, link = entry.itemId, entry.name, ns.Loot.linkOf(entry)
+  else
+    itemId, name, link = App.parseItem(itemText)
+  end
   if not name then
     Chat.print("Usage: /tlc " .. mode .. " <item link> [seconds]")
     return
@@ -121,7 +133,8 @@ function App.open(itemText, seconds, mode)
   local rules = pdb.rules or {}
   local outs, s = App.registry:open({
     itemId = itemId, itemName = name, itemLink = link,
-    zone = (GetInstanceInfo()) or "", boss = lastBoss,
+    zone = entry and entry.zone ~= "" and entry.zone or (GetInstanceInfo()) or "",
+    boss = entry and entry.boss ~= "" and entry.boss or lastBoss,
     council = mode == "session" and Roster.council() or {},
     rules = rules, mode = mode,
     seconds = seconds or (mode == "roll" and Store.settings().rollSeconds) or rules.sessionSeconds,
@@ -129,6 +142,8 @@ function App.open(itemText, seconds, mode)
   })
   send(outs)
   Chat.say(s:openLine(), true)
+  ns.Loot.opened(s, entry)
+  return s
 end
 
 function App.respond(id, response, note)
@@ -303,7 +318,7 @@ function App.debug(itemText)
     Chat.print("No item tooltip seen since login. Hover an item, then /tlc debug again.")
   end
   if itemText and itemText ~= "" then
-    local itemId, name = parseItem(itemText)
+    local itemId, name = App.parseItem(itemText)
     local item = Priority.lookup(p, itemId, name)
     Chat.print(string.format("%s (%s): %s", name or "?", tostring(itemId),
       item and ("on the list: " .. (Priority.text(item) or "")) or "not on the list"))
@@ -340,8 +355,8 @@ end
 -- Ask the leaders for any open session: at login, and on joining a group. The second ask
 -- covers a leader whose client was still loading.
 function App.askState()
-  C_Timer.After(5, function() send(App.registry:requestState()) end)
-  C_Timer.After(20, function() if IsInGroup() then send(App.registry:requestState()) end end)
+  C_Timer.After(5, function() send(App.registry:requestState()); send(ns.Loot.request()) end)
+  C_Timer.After(20, function() if IsInGroup() then send(App.registry:requestState()); send(ns.Loot.request()) end end)
 end
 
 ---------------------------------------------------------------------------
@@ -419,12 +434,17 @@ local function start()
     notify = function(kind, name)
       local line = NOTICES[kind]
       if line then Chat.print((line:gsub("NAME", name or ""))) end
+      if kind == "welcome" then send(ns.Loot.request()) end -- the list we could not check before
     end,
   })
-  Comms.init(function(msg, sender, trusted, signed) send(App.registry:handle(msg, sender, trusted, signed)) end,
+  Comms.init(function(msg, sender, trusted, signed)
+    if ns.Loot.handles(msg.t) then ns.Loot.handle(msg, sender, trusted, signed); return end
+    send(App.registry:handle(msg, sender, trusted, signed))
+  end,
     function(sender) App.registry:notice("sealed", sender) end)
   ns.Tooltip.init()
   ns.Commands.init()
+  ns.Loot.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
     local s = App.registry:restore(row.state, row.at)
     if s then Chat.print("Picked up your unfinished session for " .. s.itemName .. ".") end

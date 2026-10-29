@@ -6,6 +6,10 @@
 -- Simulated sessions go through the same registry as real ones. Their ids start with
 -- "sim-"; they are never saved, exported or posted to group chat, and /tlc sim stop drops them.
 -- It runs solo or in a party, never in a raid group, and never alongside a live session.
+--
+-- The drops also go on the loot list (adapters/Loot.lua), marked as simulated. /tlc sim
+-- opens them one after the other; /tlc sim drop only records them, for trying the list:
+-- start each one from /tlc loot, and the fake raid answers it.
 local _, ns = ...
 
 local Sim = {}
@@ -38,7 +42,7 @@ for _, r in ipairs(Sim.RAIDERS) do byName[Priority.nameKey(r.name)] = r end
 
 Sim.random = math.random -- the tests swap in a fixed sequence
 
-local tasks, generation, queue, advanced = {}, 0, {}, {}
+local tasks, generation, queue, advanced, drops = {}, 0, {}, {}, 0
 
 Sim.active = false -- between /tlc sim and /tlc sim stop (or a live session opening)
 Sim.MIN_SECONDS, Sim.MAX_SECONDS = 5, 600 -- what other clients accept in a SESSION_OPEN
@@ -234,9 +238,7 @@ local function officerVote(s)
   ns.Chat.print(string.format("[sim] %s voted for %s.", Sim.OFFICER, target.player))
 end
 
-local function openNext()
-  local job = table.remove(queue, 1)
-  if not job then return end
+local function open(job)
   local App, Store = ns.App, ns.Store
   local pdb = Store.priorities() or {}
   local it = job.item
@@ -253,9 +255,15 @@ local function openNext()
   })
   App.send(outs)
   App.announce(s, s:openLine())
+  ns.Loot.opened(s, job.entry)
   if not item then ns.Chat.print("[sim] " .. it[2] .. " is not on your list; using a made-up priority.") end
   local window = math.max(2, math.floor(job.seconds * 0.6))
   for _, r in ipairs(Sim.RAIDERS) do answer(s, r, window) end
+end
+
+local function openNext()
+  local job = table.remove(queue, 1)
+  if job then open(job) end
 end
 
 -- The next item opens once this one stops taking responses: once per session, and not
@@ -309,6 +317,7 @@ local function clear()
   end
   Sim.quiet = false
   reg.order = kept
+  ns.Loot.dropSim()
   ns.Frames.hideCandidate()
   ns.Frames.sessionsChanged()
   return dropped
@@ -319,7 +328,8 @@ local function liveOpen()
   return ns.App.registry:latest(function(s) return not Sim.isSim(s) and s.phase == "open" and s:isLeader(me) end)
 end
 
-function Sim.start(query, seconds)
+-- checks(seconds) -> true when a simulation may start here
+local function checks(seconds)
   local Chat = ns.Chat
   if IsInRaid() then
     Chat.print("Not in a raid group: a simulation would show fake loot to the whole raid. Solo or a party only.")
@@ -335,20 +345,65 @@ function Sim.start(query, seconds)
   end
   if seconds and (seconds < Sim.MIN_SECONDS or seconds > Sim.MAX_SECONDS) then
     Chat.print(string.format("Use %d to %d seconds.", Sim.MIN_SECONDS, Sim.MAX_SECONDS))
-    return
+    return false
   end
+  return true
+end
+
+-- record(zone, boss, items) -> loot list entries for the fake kill's drops
+local function record(zone, boss, items)
+  local entries = {}
+  for i, it in ipairs(items) do
+    drops = drops + 1
+    entries[i] = ns.Loot.record({ key = string.format("sim:%d:%d", drops, it[1]), itemId = it[1], name = it[2],
+                                  link = linkFor(it), zone = zone, boss = boss, sim = true })
+  end
+  return entries
+end
+
+function Sim.start(query, seconds)
+  local Chat = ns.Chat
+  if not checks(seconds) then return end
   local zone, boss, items = Sim.choose(query)
   if not zone then Chat.print(boss); return end
   clear() -- a new run replaces the last one
   Sim.active = true
-  for _, it in ipairs(items) do
-    queue[#queue + 1] = { item = it, zone = zone, boss = boss, seconds = seconds or Sim.SECONDS }
+  local entries = record(zone, boss, items)
+  for i, it in ipairs(items) do
+    queue[#queue + 1] = { item = it, zone = zone, boss = boss, seconds = seconds or Sim.SECONDS, entry = entries[i] }
   end
   local names = {}
   for i, it in ipairs(items) do names[i] = it[2] end
   Chat.print(string.format("[sim] %s killed (%s): %s. %d fake raiders and %s are answering; use the frames as normal.",
     boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
   openNext()
+end
+
+-- drop(query): a fake kill whose drops only go on the loot list. Kills add up, as in a raid,
+-- until /tlc sim stop or a /tlc sim run.
+function Sim.drop(query)
+  local Chat = ns.Chat
+  if not checks(nil) then return end
+  local zone, boss, items = Sim.choose(query)
+  if not zone then Chat.print(boss); return end
+  if not Sim.active then clear() end
+  Sim.active = true
+  record(zone, boss, items)
+  local names = {}
+  for i, it in ipairs(items) do names[i] = it[2] end
+  Chat.print(string.format("[sim] %s killed (%s): %s, on the loot list. /tlc loot to start them; %d fake raiders and %s answer.",
+    boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+end
+
+-- openEntry(entry, seconds): a simulated loot list entry, started from /tlc loot
+function Sim.openEntry(e, seconds)
+  if not Sim.active then ns.Chat.print("[sim] The simulation was stopped; /tlc sim drop again."); return end
+  if not checks(seconds) then return end
+  local it = { e.itemId, e.name, 4 }
+  for _, d in ipairs(ns.RaidLoot) do
+    for _, x in ipairs(d.items) do if x[1] == e.itemId then it = x end end
+  end
+  open({ item = it, zone = e.zone, boss = e.boss, seconds = seconds or Sim.SECONDS, entry = e })
 end
 
 function Sim.stop()

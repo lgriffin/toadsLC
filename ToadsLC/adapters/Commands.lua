@@ -10,6 +10,10 @@ local HELP = {
   "/tlc end  forget the raid password",
   "/tlc session <item> [seconds]  open a loot session for the council",
   "/tlc roll <item> [seconds]  plain priority roll in raid chat",
+  "/tlc loot  the raid's loot list: what dropped, waiting for the council",
+  "/tlc loot <n> [seconds] | /tlc loot next  open a council session for item n (or the next waiting one)",
+  "/tlc loot roll <n> [seconds]  plain priority roll for item n",
+  "/tlc loot announce | list | add <item> | remove <n> | clear | auto on|off",
   "/tlc award [name] [reason]  award the last session (default: what the list says)",
   "/tlc close  close responses on the last session",
   "/tlc reroll  re-roll the tied names on the last session",
@@ -18,6 +22,7 @@ local HELP = {
   "/tlc import | /tlc import undo",
   "/tlc export | /tlc export all | /tlc export clear",
   "/tlc sim [boss | raid | item] [seconds]  practice solo or in a party: fake a boss kill and a raid answering it",
+  "/tlc sim drop [boss | raid | item]  fake a kill whose drops only go on the loot list",
   "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc status | /tlc history | /tlc tooltip on|off",
   "/tlc debug [item]  why the tooltip does or doesn't show priorities",
@@ -47,6 +52,39 @@ function handlers.roll(rest)
   ns.App.open(item, seconds, "roll")
 end
 
+function handlers.loot(rest)
+  local L = ns.Loot
+  local sub, arg = words(rest)
+  local n = tonumber(sub)
+  if sub == "" then
+    ns.Frames.showLoot()
+  elseif n then
+    L.start(n, "session", tonumber(arg))
+  elseif sub == "next" then
+    L.startNext("session", tonumber(arg))
+  elseif sub == "roll" then
+    local which, seconds = words(arg)
+    if which == "" or which == "next" then L.startNext("roll", tonumber(seconds))
+    else L.start(tonumber(which) or which, "roll", tonumber(seconds)) end
+  elseif sub == "add" then
+    L.add(arg)
+  elseif sub == "remove" then
+    L.remove(tonumber(arg) or arg)
+  elseif sub == "announce" then
+    L.announce()
+  elseif sub == "list" then
+    L.print()
+  elseif sub == "clear" then
+    L.clear()
+  elseif sub == "auto" then
+    local st = ns.Store.settings()
+    if arg == "on" then st.lootAuto = true elseif arg == "off" then st.lootAuto = false else st.lootAuto = not st.lootAuto end
+    ns.Chat.print("Recording raid drops on the loot list " .. (st.lootAuto and "on" or "off") .. ".")
+  else
+    ns.Chat.print("Usage: /tlc loot [n | next | roll <n> | announce | list | add <item> | remove <n> | clear | auto on|off]")
+  end
+end
+
 function handlers.award(rest)
   local name, reason = rest:match("^(%S+)%s*(.*)$")
   ns.App.awardLast(name, reason)
@@ -71,6 +109,8 @@ end
 
 function handlers.sim(rest)
   if rest:lower() == "stop" then ns.Sim.stop(); return end
+  local sub, kill = words(rest)
+  if sub == "drop" then ns.Sim.drop(kill); return end
   local query, seconds = itemAndSeconds(rest)
   if tonumber(query) and tonumber(query) < 1000 then query, seconds = "", tonumber(query) end -- "/tlc sim 20"
   ns.Sim.start(query, seconds)
