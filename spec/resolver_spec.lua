@@ -25,15 +25,26 @@ describe("Resolver", function()
     assert.is_true(r.ranked[2].offspec)
   end)
 
-  it("BiS trumps Upgrade whatever the tier: Gally's tier 2 BiS 12 beats Anasazi's tier 1 Upgrade 97", function()
-    local gally = e("Gally", "Warrior", "Warrior:Fury", 12)
+  it("tier still comes first: Anasazi's tier 1 Upgrade 12 beats Gally's tier 2 BiS 97", function()
+    local gally = e("Gally", "Warrior", "Warrior:Fury", 97)
     gally.response = "bis"
-    local anasazi = e("Anasazi", "Rogue", "Rogue:Combat", 97)
+    local anasazi = e("Anasazi", "Rogue", "Rogue:Combat", 12)
     anasazi.response = "main"
-    local r = R.resolve(item, { anasazi, gally }, rules)
+    local r = R.resolve(item, { gally, anasazi }, rules)
+    assert.are.equal("Anasazi", r.winner.player)
+    assert.is_false(r.ranked[1].bis)
+    assert.is_true(r.ranked[2].bis)
+  end)
+
+  it("within a tier BiS beats Upgrade: Gally's BiS 3 beats Grom's Upgrade 99", function()
+    local bis = e("Gally", "Warrior", "Warrior:Fury", 3)
+    bis.response = "bis"
+    local up = e("Grom", "Warrior", "Warrior:Fury", 99)
+    up.response = "main"
+    local r = R.resolve(item, { up, bis }, rules)
     assert.are.equal("Gally", r.winner.player)
-    assert.is_true(r.ranked[1].bis)
-    assert.is_false(r.ranked[2].bis)
+    assert.are.equal(r.ranked[1].tier, r.ranked[2].tier)
+    assert.is_false(r.tie)
   end)
 
   it("puts BiS above Upgrade on an item that isn't on the list too", function()

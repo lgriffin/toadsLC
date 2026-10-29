@@ -68,7 +68,7 @@ to do anything beyond answering loot.
   the whole loot pool at once, the window has a row per item: answer each one. Type an
   optional note for the council (it goes with your next answer), then press:
   - **BiS** (main spec, best in slot): rolls 1-100 for you, and the council sees you flagged BiS,
-    ranked above every Upgrade.
+    ranked above Upgrade rolls in your priority tier.
   - **Upgrade** (main spec): rolls 1-100 for you.
   - **OffSpec**: rolls 1-99 for you.
   - **Pass**: you are out for this item.
@@ -250,11 +250,11 @@ stops it.
 ## How the winner is decided
 
 - A main-spec roll (1-100) always beats an off-spec roll (1-99).
-- Among main-spec rolls, **BiS beats Upgrade**, whatever the tier. A plain `/roll` counts as
-  Upgrade. BiS rows show an orange **BiS** in the council frame's Response column, and raid
-  chat flags them: `Gally wins (BiS, Fury, tier 2, rolled 12)`.
-- Then **lower tier first, then higher roll.** A tier 1 rogue rolling 41
-  beats a tier 2 warrior rolling 97.
+- Among main-spec rolls: **lower tier first, then BiS over Upgrade, then higher roll.** A tier 1
+  rogue rolling 41 beats a tier 2 warrior rolling 97, even if the warrior pressed BiS; two
+  tier 2 warriors, one BiS and one Upgrade, go to the BiS one whatever they rolled.
+- A plain `/roll` counts as Upgrade. BiS rows show an orange **BiS** in the council frame's
+  Response column, and raid chat flags them: `Gally wins (BiS, Fury, tier 2, rolled 12)`.
 - Among off-spec rolls, or for an item that isn't on the list: highest roll (BiS still above
   Upgrade).
 - When every roll is off-spec, the council frame offers both the priority pick and the

@@ -273,9 +273,9 @@ describe("Session", function()
     assert.are.equal("bis", lead:entryFor("Hadur").response)
     assert.are.equal("main", lead:entryFor("Raider").response)
     local r = lead:result()
-    assert.are.same({ "Gally", "Hadur", "Anasazi" }, { r.ranked[1].player, r.ranked[2].player, r.ranked[3].player })
+    assert.are.same({ "Anasazi", "Gally", "Hadur" }, { r.ranked[1].player, r.ranked[2].player, r.ranked[3].player }) -- tier first
     assert.are.equal("bis", sessionOf(raid, "Anasazi", id):entryFor("Gally").response) -- officers see it too
-    assert.matches("^%[ToadsLC%] Dragonspine Trophy: Gally wins %(BiS, Fury, tier 2, rolled 12%)%. Hadur 30 %(BiS, Enhance, tier 4%), Anasazi 97 %(Rogue, tier 1%)", lead:resultLine())
+    assert.matches("^%[ToadsLC%] Dragonspine Trophy: Anasazi wins %(Rogue, tier 1, rolled 97%)%. Gally 12 %(BiS, Fury, tier 2%), Hadur 30 %(BiS, Enhance, tier 4%)", lead:resultLine())
   end)
 
   it("announces a plain /tlc roll result in one line", function()

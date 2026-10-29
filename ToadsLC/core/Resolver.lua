@@ -1,5 +1,5 @@
--- Resolver: a sort, not a vote. Candidates are ordered main spec first, BiS above Upgrade,
--- then tier ascending, then roll descending; the first row is what the list says.
+-- Resolver: a sort, not a vote. Candidates are ordered main spec first, then tier ascending,
+-- then BiS above Upgrade, then roll descending; the first row is what the list says.
 local _, ns = ...
 ns = ns or {}
 
@@ -29,9 +29,9 @@ local function nameLess(a, b) return Priority.nameKey(a.player) < Priority.nameK
 
 local function byPriority(a, b)
   if a.offspec ~= b.offspec then return not a.offspec end -- main spec first, always
-  if a.bis ~= b.bis then return a.bis end -- then BiS above Upgrade, whatever the tier
   local ta, tb = a.tier or huge, b.tier or huge
   if ta ~= tb then return ta < tb end
+  if a.bis ~= b.bis then return a.bis end -- BiS above Upgrade within a tier
   if a.roll ~= b.roll then return a.roll > b.roll end
   return nameLess(a, b)
 end
@@ -77,7 +77,7 @@ function Resolver.resolve(item, entries, rules)
     if rules.allOffspecMode == "highest" then result.winner, result.by = copy[1], "highest-roll" end
     if rules.allOffspecMode == "ask" then result.winner = nil end -- window shows both, LC picks
   end
-  -- A tie is on whatever decided the winner: BiS, tier and roll by priority, the roll alone
+  -- A tie is on whatever decided the winner: tier, BiS and roll by priority, the roll alone
   -- when the highest roll decides.
   local order, sameRank = live, function(x, y) return x.offspec == y.offspec and x.bis == y.bis and x.tier == y.tier and x.roll == y.roll end
   if result.by == "highest-roll" then
