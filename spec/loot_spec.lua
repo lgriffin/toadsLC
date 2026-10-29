@@ -124,6 +124,31 @@ describe("/tlc loot in a fake client", function()
     assert.are.equal(3, #entries())
   end)
 
+  it("records a party leader's drops, rare and up, only with /tlc loot party on", function()
+    _G.IsInRaid = function() return false end
+    W.loot(CORPSE)
+    assert.are.equal(0, #entries())
+    W.slash("loot party on")
+    W.loot(CORPSE)
+    assert.are.equal(4, #entries()) -- the blue Bladespire Warbands too, never the badge
+    assert.are.equal("Bladespire Warbands", entries()[4].name)
+    W.group[1].leader = false
+    W.loot({ { 28796, "Malefic Mask of the Shadows", 4, GRUUL } })
+    assert.are.equal(4, #entries()) -- not the party leader
+    W.group[1].leader = true
+    _G.IsInRaid = function() return true end
+    W.loot({ { 28797, "Brute Cloak of the Ogre-Magi", 3, GRUUL } })
+    assert.are.equal(4, #entries()) -- in a raid, blues stay out as before
+    W.slash("loot auto off")
+    W.slash("loot party on")
+    assert.matches("Recording corpses is off", printed())
+    W.slash("loot auto on")
+    W.slash("loot party off")
+    _G.IsInRaid = function() return false end
+    W.loot({ { 28796, "Malefic Mask of the Shadows", 4, GRUUL } })
+    assert.are.equal(4, #entries())
+  end)
+
   it("starts an item from the list, announces it, and marks it through to the award", function()
     W.loot(CORPSE)
     W.slash("loot roll 1 30")
