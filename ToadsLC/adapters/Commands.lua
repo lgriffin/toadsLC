@@ -18,6 +18,7 @@ local HELP = {
   "/tlc loot party on|off  practise in a 5-man: record party drops too (rare and up) when you lead",
   "/tlc trade  what is still to trade to the winners; a trade with one puts their items in by itself",
   "/tlc trade done <name> | on | off  mark a winner's items handed over; turn the trade filling on or off",
+  "/tlc announce  the raid chat lines for awards and trades; /tlc announce award|trade on | off | reset | <text>",
   "/tlc award [name] [reason]  award the last session (default: what the list says)",
   "/tlc close  close responses on the last session",
   "/tlc reroll  re-roll the tied names on the last session",
@@ -110,6 +111,56 @@ function handlers.trade(rest)
     ns.Chat.print("Putting awarded items into trades " .. sub .. ".")
   else
     ns.Chat.print("Usage: /tlc trade [done <name> | on | off]")
+  end
+end
+
+-- /tlc announce [award | trade] [on | off | reset | <text>]
+local ANNOUNCE = {
+  award = { toggle = "announceAward", text = "awardMessage", default = "AWARD_TEMPLATE", what = "Awards" },
+  trade = { toggle = "announceTrade", text = "tradeMessage", default = "TRADE_TEMPLATE", what = "Trades" },
+}
+
+local function sample(which, text)
+  local S = ns.Session
+  local fields = { item = "[Dragonspine Trophy]", name = "Anasazi", details = "Rogue, tier 1, rolled 87",
+                   response = "BiS", spec = "Rogue", tier = 1, roll = 87, by = ns.Roster.me() }
+  return S.fill(text or S[ANNOUNCE[which].default], fields)
+end
+
+local function showAnnounce()
+  local set, S = ns.Store.settings(), ns.Session
+  for _, which in ipairs({ "award", "trade" }) do
+    local a = ANNOUNCE[which]
+    local text = set[a.text] or S[a.default]
+    ns.Chat.print(string.format("%s in raid chat: %s%s. %s", a.what, set[a.toggle] == false and "off" or "on",
+      set[a.text] and "" or " (default wording)", text))
+    ns.Chat.print("  e.g. " .. sample(which, text))
+  end
+  ns.Chat.print("Placeholders: {" .. table.concat(S.PLACEHOLDERS, "}, {") .. "} ({by} is who traded it).")
+  ns.Chat.print("Change with /tlc announce award|trade <text>, on, off or reset.")
+end
+
+function handlers.announce(rest)
+  local which, arg = words(rest)
+  local a = ANNOUNCE[which]
+  if which == "" then return showAnnounce() end
+  if not a then
+    ns.Chat.print("Usage: /tlc announce [award | trade] [on | off | reset | <text with {item} {name} ...>]")
+    return
+  end
+  local set, lower = ns.Store.settings(), arg:lower()
+  if lower == "on" or lower == "off" then
+    set[a.toggle] = lower == "on"
+    ns.Chat.print(a.what .. " announced in raid chat: " .. lower .. ".")
+  elseif lower == "reset" then
+    set[a.text] = nil
+    ns.Chat.print(a.what .. " back to the default wording: " .. sample(which))
+  elseif arg == "" then
+    showAnnounce()
+  else
+    set[a.text] = arg
+    set[a.toggle] = true
+    ns.Chat.print(a.what .. " will read: " .. sample(which, arg))
   end
 end
 

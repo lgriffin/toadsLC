@@ -119,7 +119,7 @@ describe("Session", function()
     assert.are.equal("Gally", opts.highest)
 
     raid.act("Poohtank", "award", id, "Anasazi", "votes")
-    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi (Rogue, tier 1, rolled 41)", lead:awardLine())
+    assert.are.equal("[ToadsLC] [Dragonspine Trophy] awarded to Anasazi (Rogue, tier 1, rolled 41).", lead:awardLine())
 
     local rec = lead:serialize()
     assert.are.equal("Anasazi", rec.awardedTo)

@@ -189,7 +189,7 @@ function Trade.onComplete()
   local items, name = pending, partner
   partner, pending = nil, nil
   if not items or not name then return end
-  local marked = {}
+  local marked, handed = {}, {}
   local owed = Trade.owed(name)
   for _, id in ipairs(items) do
     for _, a in ipairs(owed) do
@@ -197,12 +197,26 @@ function Trade.onComplete()
         a.done = true
         tradedSet()[a.session] = now()
         marked[#marked + 1] = a.itemName
+        handed[#handed + 1] = a
         break
       end
     end
   end
   if #marked > 0 then
     ns.Chat.print(string.format("Traded %s to %s.", table.concat(marked, ", "), name))
+  end
+  Trade.announce(handed, name)
+end
+
+-- announce(awards, name): one raid chat line per award handed over, so the raid sees it arrive.
+-- One line each keeps item links whole under the chat limit.
+function Trade.announce(awards, name)
+  local set = ns.Store.settings()
+  if #awards == 0 or set.announceTrade == false or not IsInGroup() then return end
+  for _, a in ipairs(awards) do
+    local link = select(2, GetItemInfo(a.itemId)) or a.itemName
+    local fields = { item = link, name = name, by = ns.Roster.me() }
+    ns.Chat.say(ns.Session.fill(set.tradeMessage or ns.Session.TRADE_TEMPLATE, fields))
   end
 end
 

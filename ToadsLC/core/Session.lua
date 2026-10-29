@@ -562,11 +562,48 @@ function Session:resultLine()
                    first.roll, tail)
 end
 
-function Session:awardLine()
+-- Raid chat lines the loot master can reword with /tlc announce. {name} is a placeholder;
+-- one that has nothing to say for this award is left empty, and so are any brackets it leaves.
+Session.AWARD_TEMPLATE = "[ToadsLC] {item} awarded to {name} ({details})."
+Session.TRADE_TEMPLATE = "[ToadsLC] {item} traded to {name}."
+Session.PLACEHOLDERS = { "item", "name", "details", "response", "spec", "tier", "roll", "by" }
+
+-- fill(template, fields) -> text: {key} becomes fields[key]; unknown {words} stay as typed.
+function Session.fill(template, fields)
+  local text = template:gsub("{(%w+)}", function(k)
+    local v = fields[k:lower()]
+    if v == nil then
+      for _, known in ipairs(Session.PLACEHOLDERS) do
+        if known == k:lower() then return "" end
+      end
+      return nil
+    end
+    return tostring(v)
+  end)
+  text = text:gsub("%s*%(%s*[,;]?%s*%)", ""):gsub("%s*%[%s*%]", ""):gsub("  +", " ")
+  return (text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+([%.,!])", "%1"))
+end
+
+local RESPONSE = { bis = "BiS", main = "Upgrade", offspec = "OffSpec" }
+
+-- awardFields() -> the placeholders for the award: item (link), name, details ("Fury, tier 1,
+-- rolled 87"), response (BiS / Upgrade / OffSpec), spec, tier, roll
+function Session:awardFields()
+  local f = { item = self.itemLink or self.itemName, name = self.awardedTo or "" }
+  local e = self.awardedTo and self:entryFor(self.awardedTo)
+  if e then
+    local label, tier = self:describe(e)
+    f.spec, f.tier, f.roll = label, tier, e.roll
+    f.response = e.max == self.rules.offspecRollMax and "OffSpec" or RESPONSE[e.response]
+    f.details = e.roll and strformat("%s, rolled %d", who(self, e, true), e.roll) or who(self, e, true)
+  end
+  return f
+end
+
+-- awardLine(template): the award for raid chat, worded by template (default AWARD_TEMPLATE)
+function Session:awardLine(template)
   if not self.awardedTo then return strformat("[ToadsLC] %s: not awarded.", self.itemName) end
-  local e = self:entryFor(self.awardedTo)
-  if not e or not e.roll then return strformat("[ToadsLC] %s: %s.", self.itemName, self.awardedTo) end
-  return strformat("[ToadsLC] %s: %s (%s, rolled %d)", self.itemName, self.awardedTo, who(self, e, true), e.roll)
+  return Session.fill(template or Session.AWARD_TEMPLATE, self:awardFields())
 end
 
 ---------------------------------------------------------------------------
