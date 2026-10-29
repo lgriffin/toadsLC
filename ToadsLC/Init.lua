@@ -109,9 +109,9 @@ function App.parseItem(text)
   return itemId, name, link or ("[" .. name .. "]")
 end
 
--- open(itemText, seconds, mode [, entry]) -> session: entry is a loot list entry, whose item,
--- zone and boss are used
-function App.open(itemText, seconds, mode, entry)
+-- open(itemText, seconds, mode [, entry [, quiet]]) -> session: entry is a loot list entry, whose
+-- item, zone and boss are used; quiet leaves the raid chat line to the caller (/tlc loot all)
+function App.open(itemText, seconds, mode, entry, quiet)
   if not Roster.canLead() then
     Chat.print("You need raid lead or assist to start a " .. mode .. ".")
     return
@@ -141,7 +141,7 @@ function App.open(itemText, seconds, mode, entry)
     priorityVersion = pdb.version,
   })
   send(outs)
-  Chat.say(s:openLine(), true)
+  if not quiet then Chat.say(s:openLine(), true) end
   ns.Loot.opened(s, entry)
   return s
 end

@@ -254,7 +254,7 @@ local function open(job)
     priorityVersion = item and pdb.version or nil,
   })
   App.send(outs)
-  App.announce(s, s:openLine())
+  if not job.quiet then App.announce(s, s:openLine()) end
   ns.Loot.opened(s, job.entry)
   if not item then ns.Chat.print("[sim] " .. it[2] .. " is not on your list; using a made-up priority.") end
   local window = math.max(2, math.floor(job.seconds * 0.6))
@@ -395,15 +395,16 @@ function Sim.drop(query)
     boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
 end
 
--- openEntry(entry, seconds): a simulated loot list entry, started from /tlc loot
-function Sim.openEntry(e, seconds)
+-- openEntry(entry, seconds, quiet): a simulated loot list entry, started from /tlc loot;
+-- quiet when /tlc loot all announces the lot in one go
+function Sim.openEntry(e, seconds, quiet)
   if not Sim.active then ns.Chat.print("[sim] The simulation was stopped; /tlc sim drop again."); return end
   if not checks(seconds) then return end
   local it = { e.itemId, e.name, 4 }
   for _, d in ipairs(ns.RaidLoot) do
     for _, x in ipairs(d.items) do if x[1] == e.itemId then it = x end end
   end
-  open({ item = it, zone = e.zone, boss = e.boss, seconds = seconds or Sim.SECONDS, entry = e })
+  open({ item = it, zone = e.zone, boss = e.boss, seconds = seconds or Sim.SECONDS, entry = e, quiet = quiet })
 end
 
 function Sim.stop()

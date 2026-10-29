@@ -308,7 +308,8 @@ describe("/tlc sim", function()
     W.ns.App.import(H.read("fixtures/priority.sample.json"))
     W.slash("sim [Dragonspine Trophy] 20")
     local tt = _G.GameTooltip
-    _G.ToadsLCCandidateFrame.itemHover.scripts.OnEnter(_G.ToadsLCCandidateFrame.itemHover)
+    local hover = _G.ToadsLCCandidateFrame.rows[1].hover
+    hover.scripts.OnEnter(hover)
     assert.matches("^item:28830", tt.link)
     assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
     W.ns.Frames.showCouncil()

@@ -656,11 +656,69 @@ function Registry:respond(id, response, note, me)
   return out({}, rsp, "WHISPER", s.leader)
 end
 
+Registry.UNCLAIMED_SECONDS = 15 -- how long a roll waits for the button press it belongs to
+
+-- With several items open at once (/tlc loot all), a /roll line names no item. Each MS or OS
+-- button press both whispers the leader and rolls, so a player's rolls are matched to their
+-- button presses in order: a roll goes to the oldest press still missing its roll, and a roll
+-- that gets here before its press waits for it. A /roll with no press behind it only counts
+-- while a single item is open.
+
+local function openLed(self)
+  local me, n = self.ctx.me, 0
+  for _, id in ipairs(self.order) do
+    local s = self.sessions[id]
+    if s.phase == "open" and s:isLeader(me) then n = n + 1 end
+  end
+  return n
+end
+
+-- awaiting(key) -> the oldest open session whose button press from this player has no roll yet
+function Registry:awaitingRoll(key)
+  local q = self.awaiting and self.awaiting[key]
+  while q and #q > 0 do
+    local s = self.sessions[table.remove(q, 1)]
+    local k = s and s.phase == "open" and s.live[key]
+    if k and s.candidates[k].roll == nil then return s end
+  end
+end
+
 -- roll(player, roll, min, max): a parsed /roll line seen by this client.
 function Registry:roll(player, roll, min, max)
-  local s = self:rolling()
-  if not s then return {} end
+  local key = nameKey(player)
+  local s = self:awaitingRoll(key)
+  if not s then
+    local open = openLed(self)
+    if open == 0 then return {} end
+    if open > 1 then -- several items open: hold it for the button press it belongs to
+      self.unclaimed = self.unclaimed or {}
+      local q = self.unclaimed[key] or {}
+      self.unclaimed[key] = q
+      q[#q + 1] = { roll = roll, min = min, max = max, at = self:now() }
+      return {}
+    end
+    s = self:rolling()
+  end
   return self:act(s, s:ingestRoll(player, roll, min, max, self.ctx.who(player)), "RESPONSE")
+end
+
+-- pressed(s, player): a button press reached the leader; pair it with a waiting roll, or
+-- wait for one
+function Registry:pressed(s, player)
+  local key = nameKey(player)
+  local k = s.live[key]
+  if not k or s.candidates[k].roll ~= nil or s.candidates[k].response == "pass" then return {} end
+  local q = self.unclaimed and self.unclaimed[key]
+  while q and #q > 0 do
+    local r = table.remove(q, 1)
+    if self:now() - r.at <= Registry.UNCLAIMED_SECONDS then
+      return self:act(s, s:ingestRoll(player, r.roll, r.min, r.max, self.ctx.who(player)), "RESPONSE")
+    end
+  end
+  self.awaiting = self.awaiting or {}
+  self.awaiting[key] = self.awaiting[key] or {}
+  table.insert(self.awaiting[key], s.id)
+  return {}
 end
 
 -- seq(): increasing per client, across reloads (time-based), for votes and proposals
@@ -963,7 +1021,9 @@ function Registry:handle(m, sender, trusted, signed)
 
   if m.t == "RSP" then
     if not s:isLeader(me) then return {} end
-    return self:act(s, s:ingestResponse(sender, m, self.ctx.who(sender)), "RESPONSE")
+    local msgs = self:act(s, s:ingestResponse(sender, m, self.ctx.who(sender)), "RESPONSE")
+    for _, o in ipairs(self:pressed(s, sender)) do msgs[#msgs + 1] = o end
+    return msgs
   end
 
   -- Raiders outside the council only follow the session's open, close and award.
