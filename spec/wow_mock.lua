@@ -26,6 +26,13 @@ local function newWidget(C, kind, name)
   function methods:CreateFontString() return newWidget(C, "FontString") end
   function methods:CreateTexture() return newWidget(C, "Texture") end
   function methods:GetName() return self.name end
+  -- a GameTooltip shown from a link fires OnTooltipSetItem, as the client does
+  function methods:SetHyperlink(link)
+    self.link, self.lines = link, nil
+    local id = link:match("item:(%d+)")
+    self.GetItem = function() return nil, "|Hitem:" .. id .. "::|h[Item]|h" end
+    if self.hooks and self.hooks.OnTooltipSetItem then self.hooks.OnTooltipSetItem(self) end
+  end
   function methods:AddLine(t) self.lines = self.lines or {}; table.insert(self.lines, t) end
   -- any other method is a no-op; plain fields stay nil
   return setmetatable(w, { __index = function(_, k)

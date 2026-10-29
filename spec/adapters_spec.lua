@@ -304,6 +304,18 @@ describe("/tlc sim", function()
     return out
   end
 
+  it("shows the item's Priority block when hovering the item on the loot and council frames", function()
+    W.ns.App.import(H.read("fixtures/priority.sample.json"))
+    W.slash("sim [Dragonspine Trophy] 20")
+    local tt = _G.GameTooltip
+    _G.ToadsLCCandidateFrame.itemHover.scripts.OnEnter(_G.ToadsLCCandidateFrame.itemHover)
+    assert.matches("^item:28830", tt.link)
+    assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
+    W.ns.Frames.showCouncil()
+    _G.ToadsLCCouncilFrame.itemHover.scripts.OnEnter(_G.ToadsLCCouncilFrame.itemHover)
+    assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
+  end)
+
   it("chooses a boss's drops, or one item, from the loot tables", function()
     local zone, boss, items = W.ns.Sim.choose("gruul the dragonkiller")
     assert.are.equal("Gruul's Lair", zone)

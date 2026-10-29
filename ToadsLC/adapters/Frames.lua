@@ -33,6 +33,23 @@ local function button(parent, text, width, onClick)
   return b
 end
 
+-- itemHover(parent, session): a mouse area that shows the session's item tooltip (and so
+-- its Priority block) on hover; place it over the item's icon and name.
+local function itemHover(parent, session)
+  local f = CreateFrame("Frame", nil, parent)
+  f:EnableMouse(true)
+  f:SetScript("OnEnter", function(self)
+    local s = session()
+    local link = s and (s.itemLink and s.itemLink:match("|H(item:[^|]+)|h") or (s.itemId and ("item:" .. s.itemId)))
+    if not link then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetHyperlink(link)
+    GameTooltip:Show()
+  end)
+  f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  return f
+end
+
 local function window(name, title, w, h)
   local f = CreateFrame("Frame", name, UIParent, "BasicFrameTemplateWithInset")
   f:SetSize(w, h)
@@ -120,6 +137,9 @@ local function buildCandidate()
   cand.item:SetPoint("TOPLEFT", cand.icon, "TOPRIGHT", 8, 0)
   cand.item:SetPoint("RIGHT", -12, 0)
   cand.item:SetJustifyH("LEFT")
+  cand.itemHover = itemHover(cand, function() return cand.session end)
+  cand.itemHover:SetPoint("TOPLEFT", cand.icon, "TOPLEFT")
+  cand.itemHover:SetSize(240, 36)
   cand.tier = cand:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   cand.tier:SetPoint("TOPLEFT", cand.item, "BOTTOMLEFT", 0, -4)
   cand.timer = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -228,6 +248,9 @@ local function buildCouncil()
   council = window("ToadsLCCouncilFrame", "Toads LC: council", 640, 150 + ROWS * ROW_H)
   council.item = council:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   council.item:SetPoint("TOPLEFT", 16, -32)
+  council.itemHover = itemHover(council, function() return shownSession() end)
+  council.itemHover:SetPoint("TOPLEFT", council.item, "TOPLEFT")
+  council.itemHover:SetSize(300, 20)
   council.status = council:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   council.status:SetPoint("TOPRIGHT", -40, -36)
   council.prev = button(council, "<", 24, function() council.index = math.max(1, council.index - 1); Frames.refresh() end)
