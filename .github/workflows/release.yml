@@ -24,8 +24,6 @@ on:
 permissions:
   contents: write
 
-concurrency: release
-
 jobs:
   release:
     runs-on: ubuntu-24.04
@@ -41,24 +39,26 @@ jobs:
           WANTED: ${{ inputs.version }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -n "$WANTED" ]; then
+            next="${GITHUB_REF_NAME#v}"
+          elif [ -n "$WANTED" ]; then
             next="${WANTED#v}"
           else
-            last=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+            last=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
             IFS=. read -r major minor patch <<< "${last#v}"
-            major=${major:-0} minor=${minor:-0} patch=${patch:-0}
+            major=$((10#${major:-0})) minor=$((10#${minor:-0})) patch=$((10#${patch:-0}))
             case "$BUMP" in
               major) next="$((major + 1)).0.0" ;;
               minor) next="$major.$((minor + 1)).0" ;;
               *) next="$major.$minor.$((patch + 1))" ;;
             esac
           fi
-          if ! [[ "$next" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Version must be x.y.z, got '$next'"
+          if ! [[ "$next" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Version must be x.y.z with no leading zeroes, got '$next'"
             exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if git rev-parse -q --verify "refs/tags/v$next" >/dev/null; then
             echo "::error::v$next is already released; pick a newer version"
@@ -66,7 +66,9 @@ jobs:
           fi
           echo "tag=v$next" >> "$GITHUB_OUTPUT"
       - name: Build the release zip
-        run: python3 tools/package.py --version "${{ steps.version.outputs.tag }}"
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: python3 tools/package.py --version "$TAG"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
