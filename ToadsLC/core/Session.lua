@@ -568,19 +568,35 @@ Session.AWARD_TEMPLATE = "[ToadsLC] {item} awarded to {name} ({details})."
 Session.TRADE_TEMPLATE = "[ToadsLC] {item} traded to {name}."
 Session.PLACEHOLDERS = { "item", "name", "details", "response", "spec", "tier", "roll", "by" }
 
+local KNOWN = {}
+for _, k in ipairs(Session.PLACEHOLDERS) do KNOWN[k] = true end
+
+-- empty(part, fields): part names a placeholder that has nothing to fill it
+local function empty(part, fields)
+  for k in part:gmatch("{(%w+)}") do
+    if KNOWN[k:lower()] and fields[k:lower()] == nil then return true end
+  end
+  return false
+end
+
 -- fill(template, fields) -> text: {key} becomes fields[key]; unknown {words} stay as typed.
+-- Inside (...) or [...], a comma-separated part with an empty placeholder is dropped whole, so
+-- "({response}, rolled {roll})" reads "(BiS)" with no roll, and the brackets go if nothing is left.
 function Session.fill(template, fields)
-  local text = template:gsub("{(%w+)}", function(k)
-    local v = fields[k:lower()]
-    if v == nil then
-      for _, known in ipairs(Session.PLACEHOLDERS) do
-        if known == k:lower() then return "" end
-      end
-      return nil
+  local function group(open, inner, close)
+    local kept = {}
+    for part in (inner .. ","):gmatch("([^,]*),") do
+      if not empty(part, fields) and part:match("%S") then kept[#kept + 1] = part:match("^%s*(.-)%s*$") end
     end
+    return #kept > 0 and (open .. table.concat(kept, ", ") .. close) or ""
+  end
+  local text = template:gsub("(%()([^()]*)(%))", group):gsub("(%[)([^%[%]]*)(%])", group)
+  text = text:gsub("{(%w+)}", function(k)
+    local v = fields[k:lower()]
+    if v == nil then return KNOWN[k:lower()] and "" or nil end
     return tostring(v)
   end)
-  text = text:gsub("%s*%(%s*[,;]?%s*%)", ""):gsub("%s*%[%s*%]", ""):gsub("  +", " ")
+  text = text:gsub("  +", " ")
   return (text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+([%.,!])", "%1"))
 end
 
@@ -592,10 +608,14 @@ function Session:awardFields()
   local f = { item = self.itemLink or self.itemName, name = self.awardedTo or "" }
   local e = self.awardedTo and self:entryFor(self.awardedTo)
   if e then
+    -- a button press with no roll yet has a response but no max
+    local off = e.max == self.rules.offspecRollMax or e.response == "offspec"
     local label, tier = self:describe(e)
+    if off then label, tier = "OffSpec", nil end
     f.spec, f.tier, f.roll = label, tier, e.roll
-    f.response = e.max == self.rules.offspecRollMax and "OffSpec" or RESPONSE[e.response]
-    f.details = e.roll and strformat("%s, rolled %d", who(self, e, true), e.roll) or who(self, e, true)
+    f.response = off and "OffSpec" or RESPONSE[e.response]
+    local desc = off and label or who(self, e, true)
+    f.details = e.roll and strformat("%s, rolled %d", desc, e.roll) or desc
   end
   return f
 end

@@ -16,11 +16,25 @@ function Chat.debug(text)
   if Chat.debugging then Chat.print("|cff999999" .. text .. "|r") end
 end
 
--- split(text) -> lines under the 255-byte chat limit, broken on spaces
+-- inLink(text, at): byte at falls inside a |c...|H...|h[...]|h|r link, where a cut breaks it
+local function inLink(text, at)
+  local from = 1
+  while true do
+    local s, e = text:find("|c%x+|H.-|h.-|h|r", from)
+    if not s or s > at then return false end
+    if at <= e then return true end
+    from = e + 1
+  end
+end
+
+-- split(text) -> lines under the 255-byte chat limit, broken on spaces outside item links
 function Chat.split(text)
   local out = {}
   while #text > LIMIT do
-    local cut = text:sub(1, LIMIT):match("^.*() ")
+    local cut
+    for at in text:sub(1, LIMIT):gmatch("() ") do
+      if not inLink(text, at) then cut = at end
+    end
     if cut then
       out[#out + 1] = text:sub(1, cut - 1)
       text = text:sub(cut + 1)

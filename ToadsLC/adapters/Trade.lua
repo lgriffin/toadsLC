@@ -175,11 +175,11 @@ end
 
 -- the items in our side of the window when we accept: what actually changes hands
 local function snapshot()
-  local items = {}
+  local items = { links = {} } -- links by item id, for the raid chat line
   for i = 1, Trade.SLOTS do
     local link = GetTradePlayerItemLink(i)
     local id = link and tonumber(link:match("item:(%d+)"))
-    if id then items[#items + 1] = id end
+    if id then items[#items + 1] = id; items.links[id] = link end
   end
   return items
 end
@@ -197,6 +197,7 @@ function Trade.onComplete()
         a.done = true
         tradedSet()[a.session] = now()
         marked[#marked + 1] = a.itemName
+        a.link = items.links and items.links[id]
         handed[#handed + 1] = a
         break
       end
@@ -214,7 +215,7 @@ function Trade.announce(awards, name)
   local set = ns.Store.settings()
   if #awards == 0 or set.announceTrade == false or not IsInGroup() then return end
   for _, a in ipairs(awards) do
-    local link = select(2, GetItemInfo(a.itemId)) or a.itemName
+    local link = a.link or select(2, GetItemInfo(a.itemId)) or a.itemName
     local fields = { item = link, name = name, by = ns.Roster.me() }
     ns.Chat.say(ns.Session.fill(set.tradeMessage or ns.Session.TRADE_TEMPLATE, fields))
   end

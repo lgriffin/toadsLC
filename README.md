@@ -215,8 +215,9 @@ change them with your own text and any of these placeholders:
 /tlc announce award reset      (back to the default wording)
 ```
 
-A placeholder with nothing to fill it (no roll on a hand-picked award, say) is left out, along
-with any brackets around it. The wording is saved with your settings.
+A placeholder with nothing to fill it (no roll on a hand-picked award, say) is left out. Inside
+brackets, the whole comma-separated part goes with it: `({response}, rolled {roll})` reads
+`(BiS)` when there is no roll, and the brackets go too if nothing is left. The wording is saved with your settings.
 
 ### After the raid
 

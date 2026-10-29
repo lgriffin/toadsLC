@@ -28,6 +28,15 @@ describe("filling an announcement", function()
       fill("[ToadsLC] {item} awarded to {name} ({details}).", { item = "[Leggings]", name = "Gally" }))
     assert.are.equal("Gally: [Leggings]", fill("{name}: {item} [{roll}]", { item = "[Leggings]", name = "Gally" }))
   end)
+
+  it("drops a bracketed part whose placeholder is empty, words and all", function()
+    local t = "Grats {name} on {item} ({response}, rolled {roll})!"
+    assert.are.equal("Grats Gally on [Leggings] (BiS)!",
+      fill(t, { item = "[Leggings]", name = "Gally", response = "BiS" }))
+    assert.are.equal("Grats Gally on [Leggings] (BiS, rolled 41)!",
+      fill(t, { item = "[Leggings]", name = "Gally", response = "BiS", roll = 41 }))
+    assert.are.equal("Grats Gally on [Leggings]!", fill(t, { item = "[Leggings]", name = "Gally" }))
+  end)
 end)
 
 describe("announcing awards and trades in a fake client", function()
@@ -75,6 +84,27 @@ describe("announcing awards and trades in a fake client", function()
     W.trade("Gally")
     W.endTrade(true)
     for i = before + 1, #W.chat do assert.is_nil(W.chat[i].text:find("Gally has", 1, true)) end
+  end)
+
+  it("calls an off-spec button press off-spec when it is awarded before a roll", function()
+    W.slash("loot 1 30")
+    local s = W.ns.App.registry:latest()
+    -- what the leader holds after Anasazi presses OffSpec and before any roll
+    s.candidates[#s.candidates + 1] = { player = "Anasazi", class = "ROGUE", response = "offspec", note = "" }
+    s.live[W.ns.Priority.nameKey("Anasazi")] = #s.candidates
+    s.awardedTo = "Anasazi"
+    local f = s:awardFields()
+    assert.are.equal("OffSpec", f.response)
+    assert.are.equal("OffSpec", f.details)
+    assert.is_nil(f.tier)
+  end)
+
+  it("keeps the item link from the trade window when the item cache has none", function()
+    award(1, "Anasazi")
+    _G.GetItemInfo = function() return nil end
+    W.trade("Anasazi")
+    W.endTrade(true)
+    assert.matches("RAID: %[ToadsLC%] |c.-|Hitem:28830.-|h|r traded to Anasazi%.", W.chatText())
   end)
 
   it("shows the settings and goes back to the default wording", function()
