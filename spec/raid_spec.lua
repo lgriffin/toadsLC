@@ -48,12 +48,14 @@ describe("a raid of clients", function()
       assert.are.equal(s.id, mine.id)
       assert.is_true(c.env.ToadsLCCandidateFrame:IsShown())
     end
+    local cand = rogue.env.ToadsLCCandidateFrame
+    assert.are.same({ "MS", "OS (99)", "Pass" }, { cand.main:GetText(), cand.off:GetText(), cand.pass:GetText() })
     assert.is_true(officer.env.ToadsLCCouncilFrame:IsShown())
     assert.is_falsy(hunter.env.ToadsLCCouncilFrame and hunter.env.ToadsLCCouncilFrame:IsShown())
 
     rogue.ns.App.respond(s.id, "main", "BiS for me")
     warrior.ns.App.respond(s.id, "main")
-    assert.are.same({ 1, 100 }, rogue.rolls[1]) -- the Main spec button rolls for real
+    assert.are.same({ 1, 100 }, rogue.rolls[1]) -- the MS button rolls for real
     W.deliver(all)
     rollOnLeader("Anasazi rolls 41 (1-100)")
     rollOnLeader("Gally rolls 97 (1-100)")

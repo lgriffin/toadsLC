@@ -527,7 +527,7 @@ end
 
 function Session:openLine()
   local list = self.item and Priority.text(self.item)
-  local how = "/roll main spec, /roll " .. self.rules.offspecRollMax .. " off-spec."
+  local how = "/roll MS, /roll " .. self.rules.offspecRollMax .. " OS."
   local head
   if self.mode == "session" then
     head = strformat("[ToadsLC] Loot session: %s (%d s). Answer in the frame, or %s",

@@ -264,7 +264,7 @@ describe("Session", function()
     local reg = raid.clients.Poohtank.reg
     local _, s = reg:open({ itemId = 28830, itemName = "Dragonspine Trophy", itemLink = "[Dragonspine Trophy]",
                             mode = "roll", council = {}, rules = priorities.rules })
-    assert.are.equal("[ToadsLC] Roll: [Dragonspine Trophy] (30 s). /roll main spec, /roll 99 off-spec. Priority: BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty.", s:openLine())
+    assert.are.equal("[ToadsLC] Roll: [Dragonspine Trophy] (30 s). /roll MS, /roll 99 OS. Priority: BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty.", s:openLine())
     reg:roll("Anasazi", 41, 1, 100)
     reg:roll("Gally", 97, 1, 100)
     reg:roll("Hadur", 88, 1, 100)
