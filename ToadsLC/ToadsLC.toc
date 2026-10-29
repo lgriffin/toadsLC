@@ -2,7 +2,7 @@
 ## Title: Toads LC
 ## Notes: Toads loot priorities on item tooltips, and loot sessions resolved by priority first, roll second.
 ## Author: Toads (Spineshatter EU)
-## Version: 0.1.0
+## Version: 0.2.1
 ## SavedVariables: ToadsLCDB
 
 core\Codec.lua

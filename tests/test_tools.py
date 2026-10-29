@@ -48,6 +48,15 @@ class PackageTest(unittest.TestCase):
         b = package.build(ROOT / "ToadsLC", self.tmp / "b").read_bytes()
         self.assertEqual(a, b)
 
+    def test_a_release_version_is_stamped_into_the_zipped_toc_only(self):
+        out = package.build(ROOT / "ToadsLC", self.tmp, "9.8.7")
+        self.assertEqual("ToadsLC-9.8.7.zip", out.name)
+        with zipfile.ZipFile(out) as z:
+            toc = z.read("ToadsLC/ToadsLC.toc").decode()
+        self.assertIn("## Version: 9.8.7\n", toc)
+        self.assertIn("## Interface:", toc)
+        self.assertNotIn("9.8.7", (ROOT / "ToadsLC" / "ToadsLC.toc").read_text())
+
     def test_reports_a_missing_unlisted_or_doubled_file(self):
         d = self.fake_addon(
             "## Interface: 20505\n## Title: T\n## Version: 1.0.0\n\ncore\\A.lua\ncore\\A.lua\ncore\\Gone.lua\n",

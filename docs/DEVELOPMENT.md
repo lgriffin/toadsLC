@@ -72,12 +72,21 @@ The zip holds one top-level `ToadsLC/` folder with the `.toc` and exactly the fi
 so players unzip it straight into `Interface/AddOns`. Specs, tools, schemas, fixtures and the
 loot JSON stay out. The folder name must match `ToadsLC.toc`, or the client ignores the addon.
 
-To publish a release:
+To publish a release, tag the commit on `main` and push the tag:
 
-1. Bump `## Version:` in `ToadsLC/ToadsLC.toc` (for example `0.2.0`) and merge it.
-2. Tag the merge commit `v0.2.0` and push the tag.
-3. `.github/workflows/release.yml` checks the tag matches the `.toc`, builds the zip and
-   attaches it to a GitHub release with generated notes.
+```sh
+git checkout main && git pull        # the tag must point at an up-to-date main
+git tag v0.2.1
+git push origin v0.2.1
+```
+
+`.github/workflows/release.yml` builds `ToadsLC-0.2.1.zip`, stamping the tag's version into the
+zipped `ToadsLC.toc` (so the game and `/tlc status` show 0.2.1), and attaches it to a GitHub
+release with generated notes. Keep `## Version:` in the repo's `.toc` near the latest release
+so local builds say roughly the right thing.
+
+To redo a tag whose release run failed, delete it on both sides first:
+`git tag -d v0.2.1 && git push origin :refs/tags/v0.2.1`, then tag and push again.
 
 ### Interface number
 
