@@ -105,7 +105,10 @@ local function setup(C, G, opts)
   end
   G.GetTime = function() return C.time end
   G.UnitGUID = function(unit) local m = member(unit); return m and ("Player-" .. m.name) end
-  G.UnitName = function(unit) local m = member(unit); return m and m.name end
+  G.UnitName = function(unit)
+    if unit == "NPC" then return C.tradeWith end -- the trade partner, while a trade is open
+    local m = member(unit); return m and m.name
+  end
   G.UnitClass = function(unit) local m = member(unit); return m and m.class, m and m.class end
   G.UnitIsUnit = function(a, b) local x, y = member(a), member(b); return x ~= nil and x == y end
   G.UnitIsGroupLeader = function(unit) local m = member(unit); return m and m.leader or false end
@@ -137,6 +140,27 @@ local function setup(C, G, opts)
   G.CanInspect = function() return opts.canInspect or false end
   G.CheckInteractDistance = function() return opts.canInspect or false end
   G.StaticPopup_Show = function() end
+  -- bags: C.bags[bag][slot] = { id, count }; the trade window: C.tradeWith, C.tradeSlots[i] = itemId
+  C.bags, C.tradeSlots = opts.bags or {}, {}
+  G.NUM_BAG_SLOTS = 4
+  G.ERR_TRADE_COMPLETE, G.ERR_TRADE_CANCELLED = "Trade complete.", "Trade cancelled."
+  G.C_Container = {
+    GetContainerNumSlots = function(bag) return bag == 0 and 16 or (C.bags[bag] and 20 or 0) end,
+    GetContainerItemInfo = function(bag, slot)
+      local it = (C.bags[bag] or {})[slot]
+      return it and { itemID = it[1], stackCount = it[2] or 1, isLocked = it.locked or false }
+    end,
+    PickupContainerItem = function(bag, slot) C.cursor = { bag, slot } end,
+  }
+  G.ClearCursor = function() C.cursor = nil end
+  G.ClickTradeButton = function(i)
+    local at = C.cursor and (C.bags[C.cursor[1]] or {})[C.cursor[2]]
+    if at and not C.tradeSlots[i] then C.tradeSlots[i], at.locked, at.trade = at[1], true, i; C.cursor = nil end
+  end
+  G.GetTradePlayerItemLink = function(i)
+    local id = C.tradeSlots[i]
+    return id and string.format("|cffa335ee|Hitem:%d::::::::70:::::|h[Item %d]|h|r", id, id)
+  end
   G.ChatFontNormal = {}
   -- a client in its own table starts with its own SavedVariables, never _G's
   G.ToadsLCDB = opts.db or (G ~= _G and {} or nil)
@@ -171,6 +195,32 @@ local function loot(C, items)
   fire(C, "LOOT_OPENED")
 end
 
+-- trade(C, name): name opens a trade with us; the addon's delayed item placing runs at once
+local function trade(C, name)
+  C.tradeWith, C.tradeSlots = name, {}
+  fire(C, "TRADE_SHOW")
+  local later = C.later
+  C.later = {}
+  for _, fn in ipairs(later) do fn() end
+end
+
+-- endTrade(C, complete): both accept and the items change hands, or the trade is cancelled
+local function endTrade(C, complete)
+  if complete then
+    fire(C, "TRADE_ACCEPT_UPDATE", 1, 1)
+    for _, bag in pairs(C.bags) do
+      for slot, it in pairs(bag) do if it.trade then bag[slot] = nil end end
+    end
+  else
+    for _, bag in pairs(C.bags) do
+      for _, it in pairs(bag) do it.locked, it.trade = nil, nil end
+    end
+  end
+  fire(C, "TRADE_CLOSED")
+  fire(C, "UI_INFO_MESSAGE", 0, complete and C.env.ERR_TRADE_COMPLETE or C.env.ERR_TRADE_CANCELLED)
+  C.tradeWith, C.tradeSlots = nil, {}
+end
+
 local function tick(C, seconds)
   C.time = C.time + (seconds or 0)
   for _, fn in ipairs(C.timers) do fn() end
@@ -198,11 +248,13 @@ function M.fire(...) return fire(M, ...) end
 function M.slash(msg) return slash(M, msg) end
 function M.loot(items) return loot(M, items) end
 function M.tick(seconds) return tick(M, seconds) end
+function M.trade(name) return trade(M, name) end
+function M.endTrade(complete) return endTrade(M, complete) end
 function M.flushComms() return flushComms(M) end
 function M.chatText() return chatText(M) end
 
 -- client(opts) -> a client in its own global table, already logged in; c:fire(...), c:slash(...), ...
-local Client = { fire = fire, slash = slash, loot = loot, tick = tick, flushComms = flushComms, chatText = chatText,
+local Client = { fire = fire, slash = slash, loot = loot, tick = tick, trade = trade, endTrade = endTrade, flushComms = flushComms, chatText = chatText,
                  printedText = printedText }
 Client.__index = Client
 

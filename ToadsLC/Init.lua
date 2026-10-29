@@ -68,6 +68,7 @@ local function onChange(s, what)
     end
   elseif what == "AWARD" then
     if s:isLeader(me) then App.announce(s, s:awardLine(), true) end
+    ns.Trade.onAward(s)
   elseif what == "STATE" then
     Frames.sessionsChanged()
   end
@@ -445,6 +446,7 @@ local function start()
   ns.Tooltip.init()
   ns.Commands.init()
   ns.Loot.init()
+  ns.Trade.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
     local s = App.registry:restore(row.state, row.at)
     if s then Chat.print("Picked up your unfinished session for " .. s.itemName .. ".") end
