@@ -272,8 +272,11 @@ local function responseMsg(s, k, e)
            n = e.note, ro = e.roll, mx = e.max, ig = e.ignored }
 end
 
-function Session:responseFromMax(max)
-  return max == self.rules.offspecRollMax and "offspec" or "main"
+-- responseFromMax(max, pressed): what a roll counts as. A 1-100 roll is Upgrade unless the
+-- player pressed BiS; BiS and Upgrade roll the same, only the button tells them apart.
+function Session:responseFromMax(max, pressed)
+  if max == self.rules.offspecRollMax then return "offspec" end
+  return pressed == "bis" and "bis" or "main"
 end
 
 -- ingestRoll(player, roll, min, max, who) -> RESPONSE msg | nil
@@ -289,7 +292,7 @@ function Session:ingestRoll(player, roll, min, max, who)
   if cur and cur.roll == nil and valid then
     -- the button response arrived first; its roll completes it
     local e = { player = cur.player, class = cur.class or who.class, spec = cur.spec or who.spec,
-                response = self:responseFromMax(max), note = cur.note, roll = roll, max = max }
+                response = self:responseFromMax(max, cur.response), note = cur.note, roll = roll, max = max }
     return responseMsg(self, k, e)
   end
   local e = { player = player, class = cur and cur.class or who.class, spec = cur and cur.spec or who.spec,
@@ -303,7 +306,7 @@ function Session:ingestRoll(player, roll, min, max, who)
 end
 
 -- ingestResponse(player, rsp) -> RESPONSE msg | nil, for a raider's button press.
--- rsp = { r = "main" | "offspec" | "pass", n = note, c = class, sp = spec }
+-- rsp = { r = "bis" | "main" | "offspec" | "pass", n = note, c = class, sp = spec }; "main" is Upgrade
 function Session:ingestResponse(player, rsp, who)
   if self.phase ~= "open" then return nil end
   local key = nameKey(player)
@@ -318,13 +321,13 @@ function Session:ingestResponse(player, rsp, who)
     if self.live[key] then return nil end
     return { t = "RESPONSE", s = self.id, p = player, r = "pass" }
   end
-  if rsp.r ~= "main" and rsp.r ~= "offspec" then return nil end
+  if rsp.r ~= "bis" and rsp.r ~= "main" and rsp.r ~= "offspec" then return nil end
   local k = self.live[key]
   local cur = k and self.candidates[k]
   if cur then
-    -- the roll line got here first; keep the roll, add the note and spec
+    -- the roll line got here first; keep the roll, add the note and spec, and BiS if pressed
     local e = { player = cur.player, class = class or cur.class, spec = spec or cur.spec,
-                response = cur.response, note = rsp.n or "", roll = cur.roll, max = cur.max }
+                response = cur.roll and self:responseFromMax(cur.max, rsp.r) or cur.response, note = rsp.n or "", roll = cur.roll, max = cur.max }
     return responseMsg(self, k, e)
   end
   local e = { player = player, class = class, spec = spec, response = rsp.r, note = rsp.n or "" }
@@ -506,9 +509,9 @@ end
 -- announcements
 ---------------------------------------------------------------------------
 
--- How an entry reads in chat: the label of the tier cell it matched ("Fury"), or off-spec.
+-- How an entry reads in chat: the label of the tier cell it matched ("Fury"), or OffSpec.
 function Session:describe(e)
-  if e.max == self.rules.offspecRollMax then return "off-spec" end
+  if e.max == self.rules.offspecRollMax then return "OffSpec" end
   local t, c = Priority.match(self.item, e)
   if t then
     local cell = Priority.tiers(self.item)[t][c]
@@ -519,15 +522,17 @@ function Session:describe(e)
   return e.class or "?"
 end
 
+-- BiS is flagged in front so the council sees it; Upgrade is the plain case.
 local function who(s, e, withTier)
   local label, tier = s:describe(e)
-  if tier and withTier then return strformat("%s, tier %d", label, tier) end
+  if tier and withTier then label = strformat("%s, tier %d", label, tier) end
+  if e.response == "bis" and e.max ~= s.rules.offspecRollMax then label = "BiS, " .. label end
   return label
 end
 
 function Session:openLine()
   local list = self.item and Priority.text(self.item)
-  local how = "/roll MS, /roll " .. self.rules.offspecRollMax .. " OS."
+  local how = "/roll Upgrade, /roll " .. self.rules.offspecRollMax .. " OffSpec."
   local head
   if self.mode == "session" then
     head = strformat("[ToadsLC] Loot session: %s (%d s). Answer in the frame, or %s",
@@ -535,7 +540,7 @@ function Session:openLine()
   else
     head = strformat("[ToadsLC] Roll: %s (%d s). %s", self.itemLink, self.closesAt - self.openedAt, how)
   end
-  return head .. (list and (" Priority: " .. list .. ".") or " Not on the priority list: highest roll wins.")
+  return head .. (list and (" Priority: " .. list .. ".") or " Not on the priority list: BiS first, then highest roll.")
 end
 
 -- resultLine(): one line for raid chat when the roll closes.
@@ -555,7 +560,7 @@ function Session:resultLine()
     return strformat("[ToadsLC] %s: tie on %d between %s, re-roll.", name, first.roll, table.concat(r.tied, " and "))
   end
   if not r.winner then
-    return strformat("[ToadsLC] %s: only off-spec rolls. %s by priority, %s by highest roll; the council picks.",
+    return strformat("[ToadsLC] %s: only OffSpec rolls. %s by priority, %s by highest roll; the council picks.",
                      name, r.ranked[1].player, r.highestRoll.player)
   end
   return strformat("[ToadsLC] %s: %s wins (%s, rolled %d).%s", name, first.player, who(self, first, true),
@@ -915,7 +920,7 @@ local FIELDS = {
 }
 
 local ONE_OF = {
-  r = { main = true, offspec = true, pass = true },
+  r = { bis = true, main = true, offspec = true, pass = true },
   ph = { open = true, voting = true, done = true },
   cb = { priority = true, ["highest-roll"] = true, none = true },
   via = { votes = true, proposal = true, list = true, ["highest-roll"] = true, manual = true },

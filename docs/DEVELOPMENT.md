@@ -16,7 +16,7 @@ only `ToadsLC/adapters/` is ported, and the core, the JSON documents and the sit
 | --- | --- |
 | `core/Codec.lua` | JSON encode/decode, schema checks with field paths, chunked wire format for addon messages |
 | `core/Priority.lua` | spec/role tokens, tier matching (`Rogue:*`, `ROLE:Healer`, `ANY`, named players), sheet wording parser, tooltip labels |
-| `core/Resolver.lua` | main spec, then tier, then roll; ties and all-off-spec flagged |
+| `core/Resolver.lua` | main spec, then tier, then BiS over Upgrade, then roll; ties and all-off-spec flagged |
 | `core/Crypto.lua`, `core/Wire.lua` | SHA-256, HMAC, PBKDF2, base64; signing and encrypting addon messages with the raid password |
 | `core/Session.lua` | session state machine and the message registry (open, responses, votes, proposals, close, re-roll, award, late-join state) |
 | `core/LootList.lua` | the night's loot list: entries keyed by corpse and item, their status following each session, wire form and merge |

@@ -198,12 +198,12 @@ local function roll(s, r, max)
   ns.App.send(reg:act(s, s:ingestRoll(r.name, n, 1, max, Sim.who(r.name)), "RESPONSE"))
 end
 
--- How one fake raider answers: listed specs mostly want it for main spec; the rest
--- pass, stay quiet, or take it for off-spec.
+-- How one fake raider answers: listed specs mostly want it for main spec (a third of
+-- them call it BiS); the rest pass, stay quiet, or take it for off-spec.
 local function answer(s, r, window)
   local wants
   if s.item and listed(s.item, r) then
-    wants = chance(0.85) and "main" or (chance(0.5) and "offspec" or "pass")
+    wants = chance(0.85) and (chance(0.33) and "bis" or "main") or (chance(0.5) and "offspec" or "pass")
   else
     local x = Sim.random()
     wants = x < 0.2 and "main" or x < 0.5 and "offspec" or x < 0.75 and "pass" or nil

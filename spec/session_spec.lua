@@ -175,7 +175,7 @@ describe("Session", function()
     assert.are.equal("Gally", opts.listPriority)
     assert.are.equal("Poohtank", opts.listRoll)
     assert.is_nil(opts.list)
-    assert.matches("only off%-spec rolls", lead:resultLine())
+    assert.matches("only OffSpec rolls", lead:resultLine())
     raid.act("Poohtank", "award", id, "Poohtank", "highest-roll")
     local rec = lead:serialize()
     assert.are.equal("highest-roll", rec.computedBy)
@@ -259,18 +259,37 @@ describe("Session", function()
     assert.are.equal("Anasazi", s.awardedTo)
   end)
 
+  it("flags BiS for the council, whichever of the press and the roll reaches the leader first", function()
+    local raid, id = setup()
+    raid.act("Gally", "respond", id, "bis", "")      -- press first, then the roll
+    raid.roll("Gally", 12)
+    raid.roll("Hadur", 30)                            -- roll first, then the press
+    raid.act("Hadur", "respond", id, "bis", "")
+    raid.act("Anasazi", "respond", id, "main", "")   -- Upgrade
+    raid.roll("Anasazi", 97)
+    raid.roll("Raider", 50)                           -- plain /roll counts as Upgrade
+    local lead = sessionOf(raid, "Poohtank", id)
+    assert.are.equal("bis", lead:entryFor("Gally").response)
+    assert.are.equal("bis", lead:entryFor("Hadur").response)
+    assert.are.equal("main", lead:entryFor("Raider").response)
+    local r = lead:result()
+    assert.are.same({ "Anasazi", "Gally", "Hadur" }, { r.ranked[1].player, r.ranked[2].player, r.ranked[3].player }) -- tier first
+    assert.are.equal("bis", sessionOf(raid, "Anasazi", id):entryFor("Gally").response) -- officers see it too
+    assert.matches("^%[ToadsLC%] Dragonspine Trophy: Anasazi wins %(Rogue, tier 1, rolled 97%)%. Gally 12 %(BiS, Fury, tier 2%), Hadur 30 %(BiS, Enhance, tier 4%)", lead:resultLine())
+  end)
+
   it("announces a plain /tlc roll result in one line", function()
     local raid = newRaid(ns, { "Poohtank" }, priorities)
     local reg = raid.clients.Poohtank.reg
     local _, s = reg:open({ itemId = 28830, itemName = "Dragonspine Trophy", itemLink = "[Dragonspine Trophy]",
                             mode = "roll", council = {}, rules = priorities.rules })
-    assert.are.equal("[ToadsLC] Roll: [Dragonspine Trophy] (30 s). /roll MS, /roll 99 OS. Priority: BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty.", s:openLine())
+    assert.are.equal("[ToadsLC] Roll: [Dragonspine Trophy] (30 s). /roll Upgrade, /roll 99 OffSpec. Priority: BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty.", s:openLine())
     reg:roll("Anasazi", 41, 1, 100)
     reg:roll("Gally", 97, 1, 100)
     reg:roll("Hadur", 88, 1, 100)
     reg:roll("Poohtank", 94, 1, 99)
     reg:close(s.id)
-    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (off-spec).", s:resultLine())
+    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (OffSpec).", s:resultLine())
   end)
 end)
 

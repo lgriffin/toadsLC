@@ -3,7 +3,7 @@
 Loot council for the Toads raid on Spineshatter EU (TBC Classic).
 
 Toads LC puts the guild's agreed class priorities on item tooltips and hands out loot **by
-priority tier first, roll second**. Raiders answer each drop with MS (main spec), OS (off-spec) or Pass;
+priority tier first, roll second**. Raiders answer each drop with BiS, Upgrade, OffSpec or Pass;
 officers see everyone ranked in a council frame and vote; the raid leader awards. Every roll,
 vote and award is kept, and exported after the raid for the Toads site.
 
@@ -67,12 +67,15 @@ to do anything beyond answering loot.
   tier (or "Your spec is not on the list for this item") and a countdown. When the leader opens
   the whole loot pool at once, the window has a row per item: answer each one. Type an
   optional note for the council (it goes with your next answer), then press:
-  - **MS** (main spec): rolls 1-100 for you.
-  - **OS (99)** (off-spec): rolls 1-99 for you.
+  - **BiS** (main spec, best in slot): rolls 1-100 for you, and the council sees you flagged BiS,
+    ranked above Upgrade rolls in your priority tier.
+  - **Upgrade** (main spec): rolls 1-100 for you.
+  - **OffSpec**: rolls 1-99 for you.
   - **Pass**: you are out for this item.
-- **No addon, or you closed the window?** Just `/roll` for main spec or `/roll 99` for
-  off-spec while the countdown runs. The leader's addon reads the roll from chat. This only works
-  while a single item is open: with several open at once, answer in the window.
+- **No addon, or you closed the window?** Just `/roll` for Upgrade or `/roll 99` for
+  OffSpec while the countdown runs. The leader's addon reads the roll from chat. This only works
+  while a single item is open: with several open at once, answer in the window. BiS can
+  only be claimed with the button.
 - **For a plain roll** (`/tlc roll`, used for less contested items) there is no window: the
   leader announces the item in raid chat, you `/roll` or `/roll 99`, and the result is posted
   when the timer ends.
@@ -136,7 +139,7 @@ start until it closes. An item nobody was awarded can be started again.
 
 **The whole pool at once.** **Start all** (or `/tlc loot all`) opens a council session for every
 waiting item together and posts one raid warning plus the numbered list, instead of a line per
-item. Raiders get one loot window with a row per item and MS / OS / Pass on each; answered
+item. Raiders get one loot window with a row per item and BiS / Upgrade / OffSpec / Pass on each; answered
 items drop off the window. The window stays open 60 seconds plus 15 per item (up to 10
 minutes). Each button press also rolls, and the leader's addon matches a raider's rolls to the
 items they pressed, in order. A bare `/roll` doesn't count while several items are open (it
@@ -281,7 +284,7 @@ You answer in the loot window and run the council frame, `/tlc award`, `/tlc rer
 
 Items on your imported list use its priorities; anything else gets a made-up priority over
 the fake raid. Simulated loot never reaches group chat, the export or `/tlc history`. In a
-party, the others see the windows and their MS / OS buttons roll for real. It
+party, the others see the windows and their BiS / Upgrade / OffSpec buttons roll for real. It
 won't run in a raid group or while a real session is taking rolls, and opening a real session
 stops it.
 
@@ -291,9 +294,13 @@ To test the real thing with five players in a dungeon, follow
 ## How the winner is decided
 
 - A main-spec roll (1-100) always beats an off-spec roll (1-99).
-- Among main-spec rolls: **lower tier first, then higher roll.** A tier 1 rogue rolling 41
-  beats a tier 2 warrior rolling 97.
-- Among off-spec rolls, or for an item that isn't on the list: highest roll.
+- Among main-spec rolls: **lower tier first, then BiS over Upgrade, then higher roll.** A tier 1
+  rogue rolling 41 beats a tier 2 warrior rolling 97, even if the warrior pressed BiS; two
+  tier 2 warriors, one BiS and one Upgrade, go to the BiS one whatever they rolled.
+- A plain `/roll` counts as Upgrade. BiS rows show an orange **BiS** in the council frame's
+  Response column, and raid chat flags them: `Gally wins (BiS, Fury, tier 2, rolled 12)`.
+- Among off-spec rolls, or for an item that isn't on the list: highest roll (BiS still above
+  Upgrade).
 - When every roll is off-spec, the council frame offers both the priority pick and the
   highest roll and awards neither until the council chooses (the site can switch this to
   always-priority or always-highest).
