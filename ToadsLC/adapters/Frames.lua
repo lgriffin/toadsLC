@@ -146,7 +146,7 @@ end
 local function tierText(s)
   local me = ns.Roster.specOf("player")
   local tier = s.item and Priority.tierOf(s.item, { player = ns.Roster.me(), class = me.class, spec = me.spec })
-  if not s.item then return "Not on the priority list: highest roll wins" end
+  if not s.item then return "Not on the priority list: BiS first, then highest roll" end
   if tier then return string.format("Your tier: %d of %d", tier, #s.item.priority) end
   return "Your spec is not on the list for this item"
 end

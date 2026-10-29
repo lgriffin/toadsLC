@@ -36,6 +36,14 @@ describe("Resolver", function()
     assert.is_false(r.ranked[2].bis)
   end)
 
+  it("puts BiS above Upgrade on an item that isn't on the list too", function()
+    local low = e("Gally", "Warrior", "Warrior:Fury", 1)
+    low.response = "bis"
+    local r = R.resolve({ priority = {} }, { e("Anasazi", "Rogue", "Rogue:Combat", 100), low }, rules)
+    assert.are.equal("Gally", r.winner.player)
+    assert.is_false(r.tie)
+  end)
+
   it("ranks two BiS rolls by tier then roll, and never lifts an off-spec roll", function()
     local function bis(...) local x = e(...); x.response = "bis"; return x end
     local r = R.resolve(item, { bis("Gally", "Warrior", "Warrior:Fury", 99), bis("Anasazi", "Rogue", "Rogue:Combat", 3),

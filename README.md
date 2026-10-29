@@ -255,7 +255,8 @@ stops it.
   chat flags them: `Gally wins (BiS, Fury, tier 2, rolled 12)`.
 - Then **lower tier first, then higher roll.** A tier 1 rogue rolling 41
   beats a tier 2 warrior rolling 97.
-- Among off-spec rolls, or for an item that isn't on the list: highest roll.
+- Among off-spec rolls, or for an item that isn't on the list: highest roll (BiS still above
+  Upgrade).
 - When every roll is off-spec, the council frame offers both the priority pick and the
   highest roll and awards neither until the council chooses (the site can switch this to
   always-priority or always-highest).

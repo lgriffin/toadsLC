@@ -540,7 +540,7 @@ function Session:openLine()
   else
     head = strformat("[ToadsLC] Roll: %s (%d s). %s", self.itemLink, self.closesAt - self.openedAt, how)
   end
-  return head .. (list and (" Priority: " .. list .. ".") or " Not on the priority list: highest roll wins.")
+  return head .. (list and (" Priority: " .. list .. ".") or " Not on the priority list: BiS first, then highest roll.")
 end
 
 -- resultLine(): one line for raid chat when the roll closes.

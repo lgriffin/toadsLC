@@ -209,7 +209,7 @@ function Loot.startAll(seconds)
     if not e.sim then sim = false end
   end
   local head = string.format("[ToadsLC] Loot council: %d items open for %d s. Answer each in the Toads LC window"
-    .. " (MS / OS / Pass); while several are open a bare /roll doesn't count.", #todo, seconds)
+    .. " (BiS / Upgrade / OffSpec / Pass); while several are open a bare /roll doesn't count.", #todo, seconds)
   if sim then
     Chat.print("[sim] " .. head:gsub("^%[ToadsLC%] ", "") .. " " .. table.concat(parts, " "))
   else
