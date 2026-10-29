@@ -121,6 +121,8 @@ From chat:
   didn't see); `/tlc loot remove 3` takes item 3 off.
 - `/tlc loot clear` empties the list. It also empties itself 12 hours after the last change.
 - `/tlc loot auto off` stops recording corpses (`on` starts again).
+- `/tlc loot party on` records in a party you lead too (rare and up), to practise in a 5-man;
+  see [docs/TESTING-5MAN.md](docs/TESTING-5MAN.md). `off` goes back to raids only.
 
 One item at a time, or the whole pool at once: while anything is taking rolls, nothing else can
 start until it closes. An item nobody was awarded can be started again.
@@ -244,6 +246,9 @@ party, the others see the windows and their MS / OS buttons roll for real. It
 won't run in a raid group or while a real session is taking rolls, and opening a real session
 stops it.
 
+To test the real thing with five players in a dungeon, follow
+[docs/TESTING-5MAN.md](docs/TESTING-5MAN.md).
+
 ## How the winner is decided
 
 - A main-spec roll (1-100) always beats an off-spec roll (1-99).
@@ -280,6 +285,7 @@ stops it.
 | `/tlc loot announce` / `list` | leader or assist / anyone | post the waiting items to raid chat / print the list to you |
 | `/tlc loot add <item>` / `remove <n>` / `clear` | leader or assist | change the list by hand |
 | `/tlc loot auto on` / `off` | leader or assist | record corpses you loot in a raid, or not |
+| `/tlc loot party on` / `off` | party leader | record corpses in a party too, rare and up, for a 5-man test run |
 | `/tlc trade` | whoever holds the loot | what is still to trade to the winners; opening a trade with one puts their items in |
 | `/tlc trade done <name>` / `on` / `off` | whoever holds the loot | mark a winner's items handed over; turn the trade filling on or off |
 | `/tlc close` | leader | close responses on the last session early |
