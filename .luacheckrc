@@ -16,7 +16,9 @@ local wow_read = {
   "NotifyInspect", "RAID_CLASS_COLORS", "RANDOM_ROLL_RESULT", "RandomRoll", "RegisterAddonMessagePrefix",
   "SendAddonMessage", "SendChatMessage", "StaticPopup_Show", "TooltipDataProcessor", "UIParent", "UnitClass",
   "UnitIsGroupAssistant", "UnitGUID", "GetTime", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
-  "WOW_PROJECT_ID", "bit", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
+  "WOW_PROJECT_ID", "bit", "C_Container", "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
+  "ClearCursor", "ClickTradeButton", "GetTradePlayerItemLink", "TradeFrameRecipientNameText", "NUM_BAG_SLOTS",
+  "ERR_TRADE_COMPLETE", "ERR_TRADE_CANCELLED", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
 }
 
 files["ToadsLC/adapters"] = { globals = wow, read_globals = wow_read }

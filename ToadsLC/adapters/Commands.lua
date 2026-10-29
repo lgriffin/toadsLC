@@ -14,6 +14,8 @@ local HELP = {
   "/tlc loot <n> [seconds] | /tlc loot next  open a council session for item n (or the next waiting one)",
   "/tlc loot roll <n> [seconds]  plain priority roll for item n",
   "/tlc loot announce | list | add <item> | remove <n> | clear | auto on|off",
+  "/tlc trade  what is still to trade to the winners; a trade with one puts their items in by itself",
+  "/tlc trade done <name> | on | off  mark a winner's items handed over; turn the trade filling on or off",
   "/tlc award [name] [reason]  award the last session (default: what the list says)",
   "/tlc close  close responses on the last session",
   "/tlc reroll  re-roll the tied names on the last session",
@@ -82,6 +84,20 @@ function handlers.loot(rest)
     ns.Chat.print("Recording raid drops on the loot list " .. (st.lootAuto and "on" or "off") .. ".")
   else
     ns.Chat.print("Usage: /tlc loot [n | next | roll <n> | announce | list | add <item> | remove <n> | clear | auto on|off]")
+  end
+end
+
+function handlers.trade(rest)
+  local sub, arg = words(rest)
+  if sub == "" or sub == "list" then
+    ns.Trade.print()
+  elseif sub == "done" and arg ~= "" then
+    ns.Trade.done(arg)
+  elseif sub == "on" or sub == "off" then
+    ns.Store.settings().autoTrade = sub == "on"
+    ns.Chat.print("Putting awarded items into trades " .. sub .. ".")
+  else
+    ns.Chat.print("Usage: /tlc trade [done <name> | on | off]")
   end
 end
 

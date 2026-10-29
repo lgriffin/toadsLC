@@ -151,6 +151,26 @@ shift-clicking the item into the command:
 Without `[seconds]`, a session stays open for the time set on the site (normally 30 s) and a
 plain roll for 30 s.
 
+### Handing over what was won: trades
+
+Whoever ends up holding the loot (the raid leader, or the assist who looted the corpse) hands
+it out by trading. Open a trade with a winner and Toads LC puts the items they were awarded
+tonight straight into the trade window, as long as they are in your bags. Check the window and
+press **Trade** as usual; once the trade goes through, those items are marked as handed over
+and are not offered again. Six items fit in one trade; the addon tells you when there are more.
+
+When an item is awarded and it's in your bags, the addon reminds you who to trade it to.
+
+- `/tlc trade` lists what is still to trade, by winner, and flags anything that isn't in your
+  bags (still on another officer, say).
+- `/tlc trade done <name>` marks everything owed to that player as handed over, when it went
+  some other way (master loot, the mail).
+- `/tlc trade off` stops putting items into trades (`on` starts again).
+
+Stacks are never put in for you, so a stack of several of the same item has to be split first.
+Soulbound raid drops can only be traded for two hours after they were looted; the game refuses
+the trade after that.
+
 ### After the raid
 
 1. The raid leader types `/tlc export`. A window opens with the night's loot as JSON,
@@ -245,6 +265,8 @@ stops it.
 | `/tlc loot announce` / `list` | leader or assist / anyone | post the waiting items to raid chat / print the list to you |
 | `/tlc loot add <item>` / `remove <n>` / `clear` | leader or assist | change the list by hand |
 | `/tlc loot auto on` / `off` | leader or assist | record corpses you loot in a raid, or not |
+| `/tlc trade` | whoever holds the loot | what is still to trade to the winners; opening a trade with one puts their items in |
+| `/tlc trade done <name>` / `on` / `off` | whoever holds the loot | mark a winner's items handed over; turn the trade filling on or off |
 | `/tlc close` | leader | close responses on the last session early |
 | `/tlc award` | leader | award the last session to who the list says |
 | `/tlc award <name> [reason]` | leader | award to someone else, recorded as an override |
@@ -318,6 +340,11 @@ says so in chat; the leader can then carry on with `/tlc close` and `/tlc award`
 Only the raid leader and assistants record, only in a raid group, and only items that are epic
 or on the priority list. Check `/tlc loot auto on`. An item looted some other way can go on
 with `/tlc loot add [item]`.
+
+**Opening a trade with a winner puts nothing in.**
+Type `/tlc trade`: the item has to be awarded (not just rolled), in your bags and not in a
+stack, and `/tlc trade on`. An item the game says can't be traded any more (soulbound past its
+two hours) has to go to a GM ticket.
 
 **Officer: my loot list is empty or behind the leader's.**
 Join with the raid password if one is set (`/tlc join`), then `/reload`: the addon asks the
