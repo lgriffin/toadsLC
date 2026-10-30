@@ -358,7 +358,7 @@ local function buildCandidate()
     end,
   })
   cand.offset = 0
-  cand.durations = {} -- session id -> the most time left seen, the countdown bar's full length
+  cand.durations = {} -- "id:closesAt" -> the most time left seen, the countdown bar's full length
   local function answer(row, response)
     return function()
       if not row.session then return end
@@ -405,7 +405,7 @@ local function buildCandidate()
     row.off:SetPoint("LEFT", row.main, "RIGHT", 2, 0)
     tip(row.off, "Off-spec", function()
       local max = row.session and row.session.rules.offspecRollMax or 99
-      return string.format("Rolls 1-%d for you. Off-spec answers only win when nobody needs it for main spec.", max)
+      return string.format("Rolls 1-%d for you. Off-spec answers rank after every main-spec answer; the council makes the final call.", max)
     end)
     row.pass = button(row, "Pass", 44, answer(row, "pass"))
     row.pass:SetPoint("LEFT", row.off, "RIGHT", 2, 0)
@@ -461,8 +461,10 @@ function Frames.refreshCandidate()
       -- the bar's full length is the most time seen left, not closesAt - openedAt: a session that
       -- reached us from the leader carries the leader's clock in openedAt
       local left = s:timeLeft(now)
-      local full = math.max(cand.durations[s.id] or 0, left, 1)
-      cand.durations[s.id] = full
+      -- keyed by closesAt too, so a re-roll of the same session starts a fresh, full bar
+      local key = s.id .. ":" .. tostring(s.closesAt)
+      local full = math.max(cand.durations[key] or 0, left, 1)
+      cand.durations[key] = full
       local c = timeColour(left)
       row.timer:SetText(colourText(c, string.format("%d s", left)))
       row.bar:SetMinMaxValues(0, full)
@@ -731,8 +733,8 @@ function Frames.refresh()
   council.icon:SetTexture(iconOf(s.itemId))
   council.item:SetText(s.itemLink or s.itemName)
   council.position:SetText(#council.order > 1 and string.format("%d of %d", council.index, #council.order) or "")
-  -- the phase, coloured: amber while answers come in, blue while the council votes, green once
-  -- awarded, grey when nobody got it
+  -- the phase, coloured: the countdown's colour while answers come in (green, amber in the last
+  -- 15 s, red in the last 5), blue while the council votes, green once awarded, grey when nobody got it
   if s.phase == "open" then
     local left = s:timeLeft(now)
     council.status:SetText(colourText(timeColour(left), string.format("Answers open: %d s", left)) ..
@@ -961,7 +963,7 @@ local function buildLoot()
       if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "roll") end
     end)
     row.roll:SetPoint("LEFT", row.session, "RIGHT", 0, 0)
-    tip(row.roll, "Plain roll", "Announced in raid chat; the highest roll wins, no council.")
+    tip(row.roll, "Plain roll", "Announced in raid chat and raiders /roll; no council. Main spec and priority tier still rank before the roll.")
     lootFrame.rows[i] = row
   end
   lootFrame:EnableMouseWheel(true)
