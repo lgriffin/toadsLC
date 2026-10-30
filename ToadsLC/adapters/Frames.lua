@@ -8,10 +8,17 @@ ns.Frames = Frames
 
 local Priority = ns.Priority
 
+-- one meaning per colour: green = good / settled, amber = needs attention, red = about to run
+-- out or failed, blue = in progress, grey = out of play
 local AMBER = { 1, 0.7, 0.1 }
 local GREEN = { 0.3, 0.9, 0.4 }
 local GREY = { 0.55, 0.55, 0.55 }
+local RED = { 1, 0.3, 0.3 }
+local BLUE = { 0.45, 0.75, 1 }
 local ROW_H = 18
+local BAR = "Interface\\TargetingFrame\\UI-StatusBar"
+local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t"
+local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local function colourText(c, text)
   return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, text)
@@ -31,6 +38,51 @@ local function button(parent, text, width, onClick)
   b:SetScript("OnClick", onClick)
   return b
 end
+
+-- tip(widget, title, body): a tooltip on hover. body may be a function of the widget. A
+-- disabled button with widget.disabledWhy set says why instead, so a greyed-out button is
+-- never a dead end.
+local function tip(w, title, body)
+  if w.SetMotionScriptsWhileDisabled then w:SetMotionScriptsWhileDisabled(true) end
+  w:SetScript("OnEnter", function(self)
+    local text = type(body) == "function" and body(self) or body
+    if self.disabledWhy and self.IsEnabled and not self:IsEnabled() then text = self.disabledWhy end
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine(type(title) == "function" and title(self) or title)
+    if text then GameTooltip:AddLine(text, 1, 1, 1, true) end
+    GameTooltip:Show()
+  end)
+  w:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+-- stripe(row, i): a faint band behind every other row, so a wide row reads across
+local function stripe(row, i)
+  local t = row:CreateTexture(nil, "BACKGROUND", nil, -1)
+  t:SetAllPoints()
+  t:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.035 or 0)
+  return t
+end
+
+-- rule(parent, y): a hairline under column headings, across the window
+local function rule(parent, y)
+  local t = parent:CreateTexture(nil, "ARTWORK")
+  t:SetColorTexture(1, 1, 1, 0.15)
+  t:SetHeight(1)
+  t:SetPoint("TOPLEFT", 14, y)
+  t:SetPoint("TOPRIGHT", -14, y)
+  return t
+end
+
+-- emptyText(parent): a centred line that teaches what will appear where the rows are
+local function emptyText(parent)
+  local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+  fs:SetPoint("TOPLEFT", 30, -90)
+  fs:SetPoint("TOPRIGHT", -30, -90)
+  fs:SetJustifyH("CENTER")
+  return fs
+end
+
+local function iconOf(itemId) return itemId and GetItemIcon(itemId) or QUESTION end
 
 -- itemHover(parent, session): a mouse area that shows the session's item tooltip (and so
 -- its Priority block) on hover; place it over the item's icon and name.
@@ -271,12 +323,22 @@ local function waitingForMe()
   return out
 end
 
+-- tierText(s): where this player stands, coloured so it reads at a glance: green for top
+-- priority, plain for a lower tier, grey when their spec is not listed
 local function tierText(s)
   local me = ns.Roster.specOf("player")
   local tier = s.item and Priority.tierOf(s.item, { player = ns.Roster.me(), class = me.class, spec = me.spec })
   if not s.item then return "Not on the priority list: highest roll wins" end
-  if tier then return string.format("Your tier: %d of %d", tier, #s.item.priority) end
-  return "Your spec is not on the list for this item"
+  if tier == 1 then return colourText(GREEN, string.format("Top priority: you're tier 1 of %d", #s.item.priority)) end
+  if tier then return string.format("You're tier %d of %d", tier, #s.item.priority) end
+  return colourText(GREY, "Your spec is not on the list for this item")
+end
+
+-- the countdown's colour: amber in the last 15 seconds, red in the last 5
+local function timeColour(left)
+  if left <= 5 then return RED end
+  if left <= 15 then return AMBER end
+  return GREEN
 end
 
 local function buildCandidate()
@@ -289,12 +351,14 @@ local function buildCandidate()
         row:SetWidth(rowW)
         row.item:SetWidth(rowW - 80)
         row.tier:SetWidth(rowW - 44 - CAND_BUTTONS)
+        row.bar:SetWidth(rowW - 44 - CAND_BUTTONS)
         row.hover:SetWidth(rowW - 4 - CAND_BUTTONS)
       end
       if f:IsShown() then Frames.refreshCandidate() end
     end,
   })
   cand.offset = 0
+  cand.durations = {} -- "id:closesAt" -> the most time left seen, the countdown bar's full length
   local function answer(row, response)
     return function()
       if not row.session then return end
@@ -308,6 +372,7 @@ local function buildCandidate()
     local row = CreateFrame("Frame", nil, cand)
     row:SetSize(446, CAND_H)
     row:SetPoint("TOPLEFT", 12, -28 - (i - 1) * CAND_H)
+    stripe(row, i)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(32, 32)
     row.icon:SetPoint("LEFT", 2, 0)
@@ -320,17 +385,31 @@ local function buildCandidate()
     row.tier:SetPoint("TOPLEFT", row.item, "BOTTOMLEFT", 0, -3)
     row.tier:SetWidth(220)
     row.tier:SetJustifyH("LEFT")
-    row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.timer:SetPoint("TOPRIGHT", -2, -2)
+    -- the time left as a draining bar under the tier line
+    row.bar = CreateFrame("StatusBar", nil, row)
+    row.bar:SetStatusBarTexture(BAR)
+    row.bar:SetSize(220, 4)
+    row.bar:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 6, 0)
+    row.bar.bg = row.bar:CreateTexture(nil, "BACKGROUND")
+    row.bar.bg:SetAllPoints()
+    row.bar.bg:SetColorTexture(0, 0, 0, 0.5)
     row.hover = itemHover(row, function() return row.session end)
     row.hover:SetPoint("LEFT", 2, 0)
     row.hover:SetSize(280, 36)
     row.main = button(row, "MS", 50, answer(row, "main"))
     row.main:SetPoint("BOTTOMRIGHT", -112, 2)
+    tip(row.main, "Main spec", "Rolls 1-100 for you. Main-spec answers are ranked by priority tier first, then roll.")
     row.off = button(row, "OS", 64, answer(row, "offspec"))
     row.off:SetPoint("LEFT", row.main, "RIGHT", 2, 0)
+    tip(row.off, "Off-spec", function()
+      local max = row.session and row.session.rules.offspecRollMax or 99
+      return string.format("Rolls 1-%d for you. Off-spec answers rank after every main-spec answer; the council makes the final call.", max)
+    end)
     row.pass = button(row, "Pass", 44, answer(row, "pass"))
     row.pass:SetPoint("LEFT", row.off, "RIGHT", 2, 0)
+    tip(row.pass, "Pass", "You're out for this item. Nothing is rolled.")
     cand.rows[i] = row
   end
   cand.more = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -348,7 +427,7 @@ local function buildCandidate()
   cand.note:SetMaxLetters(80)
   local hint = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   hint:SetPoint("BOTTOMLEFT", cand.note, "TOPLEFT", -4, 2)
-  hint:SetText("Note to the council (optional, sent with your next answer)")
+  hint:SetText("Note for the council (optional): goes with your next answer")
   cand:SetScript("OnUpdate", function(self, dt)
     self.acc = (self.acc or 0) + dt
     if self.acc < 0.5 then return end
@@ -376,10 +455,21 @@ function Frames.refreshCandidate()
       row:Hide()
     else
       row:Show()
-      row.icon:SetTexture(s.itemId and GetItemIcon(s.itemId) or "Interface\\Icons\\INV_Misc_QuestionMark")
+      row.icon:SetTexture(iconOf(s.itemId))
       row.item:SetText(s.itemLink or s.itemName)
       row.tier:SetText(tierText(s))
-      row.timer:SetText(string.format("%d s", s:timeLeft(now)))
+      -- the bar's full length is the most time seen left, not closesAt - openedAt: a session that
+      -- reached us from the leader carries the leader's clock in openedAt
+      local left = s:timeLeft(now)
+      -- keyed by closesAt too, so a re-roll of the same session starts a fresh, full bar
+      local key = s.id .. ":" .. tostring(s.closesAt)
+      local full = math.max(cand.durations[key] or 0, left, 1)
+      cand.durations[key] = full
+      local c = timeColour(left)
+      row.timer:SetText(colourText(c, string.format("%d s", left)))
+      row.bar:SetMinMaxValues(0, full)
+      row.bar:SetValue(left)
+      row.bar:SetStatusBarColor(c[1], c[2], c[3])
       row.off:SetText(string.format("OS (%d)", s.rules.offspecRollMax))
     end
   end
@@ -459,19 +549,25 @@ local function buildCouncil()
       Frames.refresh()
     end,
   })
+  council.icon = council:CreateTexture(nil, "ARTWORK")
+  council.icon:SetSize(20, 20)
+  council.icon:SetPoint("TOPLEFT", 16, -30)
   council.item = council:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  council.item:SetPoint("TOPLEFT", 16, -32)
+  council.item:SetPoint("LEFT", council.icon, "RIGHT", 6, 0)
   council.itemHover = itemHover(council, function() return shownSession() end)
-  council.itemHover:SetPoint("TOPLEFT", council.item, "TOPLEFT")
-  council.itemHover:SetSize(300, 20)
+  council.itemHover:SetPoint("TOPLEFT", council.icon, "TOPLEFT")
+  council.itemHover:SetSize(326, 20)
   council.status = council:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  council.status:SetPoint("TOPRIGHT", -40, -36)
-  council.prev = button(council, "<", 24, function() council.index = math.max(1, council.index - 1); Frames.refresh() end)
-  council.prev:SetPoint("TOPRIGHT", -12, -30)
+  -- < and > step through the items open tonight; "2 of 5" says where you are
   council.next = button(council, ">", 24, function() council.index = math.min(#council.order, council.index + 1); Frames.refresh() end)
-  council.next:SetPoint("RIGHT", council.prev, "LEFT", -2, 0)
-  council.status:ClearAllPoints()
-  council.status:SetPoint("RIGHT", council.next, "LEFT", -8, 0)
+  council.next:SetPoint("TOPRIGHT", -12, -30)
+  council.prev = button(council, "<", 24, function() council.index = math.max(1, council.index - 1); Frames.refresh() end)
+  council.prev:SetPoint("RIGHT", council.next, "LEFT", -2, 0)
+  tip(council.prev, "Previous item")
+  tip(council.next, "Next item")
+  council.position = council:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  council.position:SetPoint("RIGHT", council.prev, "LEFT", -6, 0)
+  council.status:SetPoint("RIGHT", council.position, "LEFT", -10, 0)
 
   local x = 16
   for _, col in ipairs(COLS) do
@@ -481,6 +577,8 @@ local function buildCouncil()
     col.x = x
     x = x + col.w
   end
+  rule(council, -70)
+  council.empty = emptyText(council)
 
   council.rows = {}
   for i = 1, ROWS_MAX do
@@ -488,6 +586,7 @@ local function buildCouncil()
     row:SetSize(600, ROW_H)
     row:SetPoint("TOPLEFT", 12, -72 - (i - 1) * ROW_H)
     row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    stripe(row, i)
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetAllPoints()
     row.bg:SetColorTexture(0, 0, 0, 0)
@@ -560,21 +659,25 @@ local function buildCouncil()
     end)
   end)
   council.awardTo:SetPoint("BOTTOMLEFT", 14, 12)
+  tip(council.awardTo, "Award to anyone", "Name a player and a reason. The reason is recorded with the award.")
   council.noAward = button(council, "No award", 90, function()
     local s = shownSession()
     if s then ns.App.award(s.id, nil, nil) end
   end)
   council.noAward:SetPoint("LEFT", council.awardTo, "RIGHT", 4, 0)
+  tip(council.noAward, "No award", "Nobody gets this item. It can be started again from the loot list.")
   council.closeBtn = button(council, "Close responses", 120, function()
     local s = shownSession()
     if s then ns.App.close(s.id) end
   end)
   council.closeBtn:SetPoint("LEFT", council.noAward, "RIGHT", 4, 0)
+  tip(council.closeBtn, "Close responses", "Stop taking answers now instead of waiting for the countdown, and move to voting.")
   council.reroll = button(council, "Re-roll tied", 100, function()
     local s = shownSession()
     if s then ns.App.reroll(s.id) end
   end)
   council.reroll:SetPoint("LEFT", council.closeBtn, "RIGHT", 4, 0)
+  tip(council.reroll, "Re-roll tied", "The players tied at the top (highlighted amber) roll again.")
   council.propose = button(council, "Propose…", 90, function()
     local s = shownSession()
     if not s then return end
@@ -627,13 +730,21 @@ function Frames.refresh()
   local now = ns.App.now()
   council.prev:SetEnabled(council.index > 1)
   council.next:SetEnabled(council.index < #council.order)
+  council.icon:SetTexture(iconOf(s.itemId))
   council.item:SetText(s.itemLink or s.itemName)
+  council.position:SetText(#council.order > 1 and string.format("%d of %d", council.index, #council.order) or "")
+  -- the phase, coloured: the countdown's colour while answers come in (green, amber in the last
+  -- 15 s, red in the last 5), blue while the council votes, green once awarded, grey when nobody got it
   if s.phase == "open" then
-    council.status:SetText(string.format("Responses open: %d s · %d passed", s:timeLeft(now), s:passCount()))
+    local left = s:timeLeft(now)
+    council.status:SetText(colourText(timeColour(left), string.format("Answers open: %d s", left)) ..
+      string.format(" · %d passed", s:passCount()))
   elseif s.phase == "voting" then
-    council.status:SetText(string.format("Voting · %d passed", s:passCount()))
+    council.status:SetText(colourText(BLUE, "Voting") .. string.format(" · %d passed", s:passCount()))
+  elseif s.awardedTo then
+    council.status:SetText(colourText(GREEN, "Awarded to " .. s.awardedTo))
   else
-    council.status:SetText("Awarded: " .. (s.awardedTo or "nobody"))
+    council.status:SetText(colourText(GREY, "Not awarded"))
   end
 
   local r = s:result()
@@ -660,6 +771,9 @@ function Frames.refresh()
 
   local myVote = s.votes[Priority.nameKey(me)]
   council.total = #rows
+  council.empty:SetText(#rows == 0 and (s.phase == "open"
+    and "No answers yet. Raiders appear here, ranked, as they answer."
+    or "Nobody answered for this item.") or "")
   local shown = council.visible
   council.offset = math.max(0, math.min(council.offset, #rows - shown))
   if #rows > shown then
@@ -685,7 +799,8 @@ function Frames.refresh()
       elseif says and opts.listRoll then
         says = "list says (priority)"
       end
-      local resp = e.ignored and e.ignored or (e.max == s.rules.offspecRollMax and "off-spec" or (e.response == "offspec" and "off-spec" or "main"))
+      local off = e.max == s.rules.offspecRollMax or e.response == "offspec"
+      local resp = e.ignored and e.ignored or (off and colourText(BLUE, "off-spec") or "main")
       local n = counts[k] or 0
       row.voters = voters[k]
       local pips = string.rep("|TInterface\\COMMON\\Indicator-Green:12|t", math.min(n, 6))
@@ -695,9 +810,9 @@ function Frames.refresh()
         spec = specLabel,
         tier = tier and tostring(tier) or "-",
         resp = resp,
-        roll = e.roll and tostring(e.roll) or "…",
+        roll = e.roll and tostring(e.roll) or colourText(GREY, "…"),
         votes = pips,
-        note = (says and colourText(GREEN, says .. "  ") or "") .. (e.note or ""),
+        note = (says and (CHECK .. colourText(GREEN, " " .. says .. "  ")) or "") .. (e.note or ""),
       }
       for key, fs in pairs(row.cells) do
         fs:SetText(cells[key])
@@ -719,7 +834,8 @@ function Frames.refresh()
     council.footer:SetText(string.format("Proposal by %s: %s%s", s.proposal.by, s.proposal.player,
       (s.proposal.reason ~= "" and (": " .. s.proposal.reason) or "")))
   else
-    council.footer:SetText(s.phase == "done" and s:awardLine() or "Click a row to vote; right-click to propose.")
+    council.footer:SetText(s.phase == "done" and s:awardLine()
+      or colourText(GREY, "Click a raider to vote for them; right-click for more (propose" .. (leader and ", set spec, award)." or ").")))
   end
 
   local canAward = leader and s.phase ~= "done"
@@ -784,14 +900,14 @@ local function buildLoot()
     layout = function(f, w, h)
       f.visible = math.max(4, math.min(LOOT_MAX, math.floor((h - 110) / LOOT_H)))
       local rowW = w - 30
-      local itemW = rowW - 324
-      local bossX = 28 + itemW + 4
+      local itemW = rowW - 344
+      local bossX = 48 + itemW + 4
       f.heads.boss:SetPoint("TOPLEFT", 12 + bossX, -32)
       f.heads.status:SetPoint("TOPLEFT", 12 + bossX + 100, -32)
       for _, row in ipairs(f.rows) do
         row:SetWidth(rowW)
         row.item:SetWidth(itemW)
-        row.hover:SetWidth(itemW)
+        row.hover:SetWidth(itemW + 20)
         row.boss:SetPoint("LEFT", bossX, 0)
         row.status:SetPoint("LEFT", bossX + 100, 0)
       end
@@ -800,23 +916,29 @@ local function buildLoot()
   })
   lootFrame.offset = 0
   lootFrame.heads = {}
-  local heads = { { "num", "#", 16 }, { "item", "Item", 40 }, { "boss", "Boss", 270 }, { "status", "Status", 370 } }
+  local heads = { { "num", "#", 16 }, { "item", "Item", 60 }, { "boss", "Boss", 270 }, { "status", "Status", 370 } }
   for _, h in ipairs(heads) do
     local fs = lootFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", h[3], -32)
     fs:SetText(h[2])
     lootFrame.heads[h[1]] = fs
   end
+  rule(lootFrame, -44)
+  lootFrame.empty = emptyText(lootFrame)
   lootFrame.rows = {}
   for i = 1, LOOT_MAX do
     local row = CreateFrame("Frame", nil, lootFrame)
     row:SetSize(530, LOOT_H)
     row:SetPoint("TOPLEFT", 12, -46 - (i - 1) * LOOT_H)
-    row.num = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    stripe(row, i)
+    row.num = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.num:SetPoint("LEFT", 4, 0)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(16, 16)
+    row.icon:SetPoint("LEFT", 28, 0)
     row.item = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.item:SetPoint("LEFT", 28, 0)
-    row.item:SetWidth(226)
+    row.item:SetPoint("LEFT", 48, 0)
+    row.item:SetWidth(206)
     row.item:SetJustifyH("LEFT")
     row.item:SetWordWrap(false)
     row.hover = itemHover(row, function() return row.entry and { itemLink = ns.Loot.linkOf(row.entry), itemId = row.entry.itemId } end)
@@ -836,10 +958,12 @@ local function buildLoot()
       if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "session") end
     end)
     row.session:SetPoint("RIGHT", -40, 0)
+    tip(row.session, "Council session", "Raiders answer MS, OS or Pass; officers vote; you award.")
     row.roll = button(row, "Roll", 40, function()
       if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "roll") end
     end)
     row.roll:SetPoint("LEFT", row.session, "RIGHT", 0, 0)
+    tip(row.roll, "Plain roll", "Announced in raid chat and raiders /roll; no council. Main spec and priority tier still rank before the roll.")
     lootFrame.rows[i] = row
   end
   lootFrame:EnableMouseWheel(true)
@@ -853,10 +977,13 @@ local function buildLoot()
   lootFrame.footer:SetJustifyH("LEFT")
   lootFrame.nextBtn = button(lootFrame, "Start next", 100, function() ns.Loot.startNext("session") end)
   lootFrame.nextBtn:SetPoint("BOTTOMLEFT", 14, 12)
+  tip(lootFrame.nextBtn, "Start next", "Opens a council session for the first item still waiting.")
   lootFrame.all = button(lootFrame, "Start all", 90, function() ns.Loot.startAll() end)
   lootFrame.all:SetPoint("LEFT", lootFrame.nextBtn, "RIGHT", 4, 0)
+  tip(lootFrame.all, "Start all", "Opens every waiting item at once: raiders answer them all in one window.")
   lootFrame.announce = button(lootFrame, "Announce list", 110, function() ns.Loot.announce() end)
   lootFrame.announce:SetPoint("LEFT", lootFrame.all, "RIGHT", 4, 0)
+  tip(lootFrame.announce, "Announce list", "Posts the waiting items to raid chat, so raiders know what's coming.")
   lootFrame.clear = button(lootFrame, "Clear list", 90, function()
     Frames.prompt("Clear the whole loot list? Type yes", function(text)
       if text and text:lower() == "yes" then ns.Loot.clear() end
@@ -866,7 +993,8 @@ local function buildLoot()
   fitWindow(lootFrame)
 end
 
-local STATUS_COLOUR = { waiting = AMBER, awarded = GREEN, none = GREY }
+local STATUS_COLOUR = { waiting = AMBER, open = BLUE, voting = BLUE, awarded = GREEN, none = GREY }
+local BUSY = "Another item is taking answers. Wait for it to close."
 
 function Frames.refreshLoot()
   if not lootFrame or not lootFrame:IsShown() then return end
@@ -884,6 +1012,7 @@ function Frames.refreshLoot()
     else
       row:Show()
       row.num:SetText(tostring(n))
+      row.icon:SetTexture(iconOf(e.itemId))
       row.item:SetText(ns.Loot.linkOf(e))
       row.boss:SetText((e.sim and "[sim] " or "") .. (e.boss ~= "" and e.boss or "?"))
       row.status:SetText(colourText(STATUS_COLOUR[e.status] or { 1, 1, 1 }, ns.LootList.label(e)))
@@ -892,11 +1021,14 @@ function Frames.refreshLoot()
       row.roll:SetShown(can and not e.sim)
       row.session:SetEnabled(not busy)
       row.roll:SetEnabled(not busy)
+      row.session.disabledWhy, row.roll.disabledWhy = BUSY, BUSY
     end
   end
   local waiting = #ns.Loot.list:waiting()
+  lootFrame.empty:SetText(#entries == 0
+    and "Nothing recorded yet.\nOpen a boss's corpse in a raid and its drops appear here.\n/tlc loot add [item] adds one by hand." or "")
   if #entries == 0 then
-    lootFrame.footer:SetText("Nothing recorded yet. Drops you loot in a raid appear here; /tlc loot add <item> adds one by hand.")
+    lootFrame.footer:SetText("")
   else
     lootFrame.footer:SetText(string.format("%d item%s, %d waiting%s.", #entries, #entries == 1 and "" or "s", waiting,
       busy and "; one is taking rolls now" or ""))
@@ -905,6 +1037,7 @@ function Frames.refreshLoot()
   lootFrame.nextBtn:SetEnabled(not busy)
   lootFrame.all:SetShown(lead and waiting > 1)
   lootFrame.all:SetEnabled(not busy)
+  lootFrame.nextBtn.disabledWhy, lootFrame.all.disabledWhy = BUSY, BUSY
   lootFrame.announce:SetShown(lead and waiting > 0)
   lootFrame.clear:SetShown(lead and #entries > 0)
 end
@@ -932,6 +1065,11 @@ local function buildIO()
   local scroll = CreateFrame("ScrollFrame", nil, ioFrame, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", 14, -32)
   scroll:SetPoint("BOTTOMRIGHT", -34, 48)
+  -- a dark well behind the text, so the box reads as somewhere to paste
+  local well = ioFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+  well:SetPoint("TOPLEFT", scroll, "TOPLEFT", -4, 4)
+  well:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 4, -4)
+  well:SetColorTexture(0, 0, 0, 0.45)
   local box = CreateFrame("EditBox", nil, scroll)
   box:SetMultiLine(true)
   box:SetFontObject(ChatFontNormal)

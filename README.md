@@ -64,7 +64,9 @@ to do anything beyond answering loot.
   priority tier in class colours, with your own tier marked `>`. This works in bags, on the
   loot window, on chat links and on comparison tooltips. `/tlc tooltip off` hides it.
 - **When the raid leader opens a loot session,** a small window pops up with the item, your
-  tier (or "Your spec is not on the list for this item") and a countdown. When the leader opens
+  tier (green when you're top priority, grey when your spec is not on the list) and a countdown
+  bar that turns amber in the last 15 seconds and red in the last 5. Hover a button to see what
+  it does. When the leader opens
   the whole loot pool at once, the window has a row per item: answer each one. Type an
   optional note for the council (it goes with your next answer), then press:
   - **MS** (main spec): rolls 1-100 for you.
