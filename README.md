@@ -11,6 +11,7 @@ This guide is for players and officers. If you want to change the addon itself, 
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 - [Install](#install)
+- [The Toads LC window](#the-toads-lc-window)
 - [What raiders do](#what-raiders-do)
 - [Raid night for the leader and officers](#raid-night-for-the-leader-and-officers)
 - [The raid password](#the-raid-password)
@@ -43,7 +44,8 @@ This guide is for players and officers. If you want to change the addon itself, 
    ```
 
 5. Start the game. On the character screen, open **AddOns** and make sure **Toads LC** is
-   ticked. In game, `/tlc help` lists the commands.
+   ticked. In game, type `/tlc` (or click the minimap button) to open the Toads LC window;
+   `/tlc help` lists the slash commands.
 
 Do not use GitHub's green **Code > Download ZIP** button: that zip is the developer source,
 and its folder is named `toadsLC-main`, which the game will not load. Use the release zip.
@@ -54,6 +56,30 @@ SavedVariables, not in the addon folder).
 
 Toads LC runs alongside Gargul, RCLootCouncil and other loot addons; each adds its own
 tooltip lines. It only loads on the TBC Classic client.
+
+## The Toads LC window
+
+`/tlc` on its own, or the minimap button, opens one window with its pages down the left side.
+Everything the slash commands do has a button there; the commands still work as shortcuts.
+
+- **Raider** (everyone): **Rolls** lists tonight's loot, where each item is, and what you
+  answered. When an item is announced the answer window pops up as before.
+- **Loot council** (locked): the council pages stay hidden until this character has tonight's
+  raid password. On the **Unlock** page the raid leader types a password and presses
+  **Begin raid**; officers type the same one and press **Join as officer** (the same as
+  `/tlc begin` and `/tlc join`). **Lock** at the bottom of the side bar hides them again; type
+  the password to unlock.
+  - **Loot**, the main page: every item tonight with its boss, when it dropped, the two hours
+    it can be traded counting down, and its status (waiting to announce, awaiting rolls,
+    missing votes, awarded). **Announce** on a row opens that item; **Announce all** opens
+    every waiting item at once so the whole raid has time to answer and vote. Click an item
+    to see each raider's answer, roll and tier, who on the council has voted and who still has
+    to, and to vote (click a raider), award, re-roll, undo or remove it.
+  - **Trades**, **Raid & council** (password fingerprint, council, items by hand, the last item
+    you led), **Raid chat lines** (award and trade wording), **Import / export** and
+    **History**.
+- **Practice** (`/tlc sim`) and **Settings**: tooltip priorities, the minimap button, lock
+  window positions, an opacity slider and a size slider for every Toads LC window.
 
 ## What raiders do
 

@@ -321,10 +321,10 @@ describe("/tlc sim", function()
     W.ns.App.import(H.read("fixtures/priority.sample.json"))
     W.slash("sim [Dragonspine Trophy] 20")
     local row = _G.ToadsLCCandidateFrame.rows[1]
-    assert.matches("^|cff4ce566", row.timer:GetText()) -- plenty of time: green
+    assert.matches("^|cff3fd6c8", row.timer:GetText()) -- plenty of time: the site's teal
     W.tick(16)
     W.ns.Frames.refreshCandidate()
-    assert.matches("^|cffff4c4c4 s", row.timer:GetText()) -- last 5 seconds: red
+    assert.matches("^|cffe06a5f4 s", row.timer:GetText()) -- last 5 seconds: red
     W.ns.Frames.showCouncil()
     local council = _G.ToadsLCCouncilFrame
     assert.matches("Answers open", council.status:GetText())

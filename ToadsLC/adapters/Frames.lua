@@ -8,20 +8,32 @@ ns.Frames = Frames
 
 local Priority = ns.Priority
 
--- one meaning per colour: green = good / settled, amber = needs attention, red = about to run
--- out or failed, blue = in progress, grey = out of play
-local AMBER = { 1, 0.7, 0.1 }
-local GREEN = { 0.3, 0.9, 0.4 }
-local GREY = { 0.55, 0.55, 0.55 }
-local RED = { 1, 0.3, 0.3 }
-local BLUE = { 0.45, 0.75, 1 }
+-- the Toads site's palette, "pond at dusk" (lgriffin/toads, apps/web/src/lib/theme.css)
+local function hex(h)
+  return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
+end
+local THEME = {
+  ink = hex("120f33"), dusk = hex("1b1a4d"), panel = hex("1d1c52"), header = hex("0d0b28"), menu = hex("17164a"),
+  line = hex("3d3d86"), cream = hex("f7ecd2"), muted = hex("c4c0ea"), teal = hex("3fd6c8"), bronze = hex("d9a85a"),
+  bronzeHi = hex("f4dc9c"), warn = hex("e0b04f"), bad = hex("e06a5f"), info = hex("9fd3f0"), dim = hex("8784b5"),
+}
+Frames.THEME = THEME
+
+-- one meaning per colour: green (the site's teal) = good / settled, amber = needs attention,
+-- red = about to run out or failed, blue = in progress, grey = out of play
+local AMBER = THEME.warn
+local GREEN = THEME.teal
+local GREY = THEME.dim
+local RED = THEME.bad
+local BLUE = THEME.info
 local ROW_H = 18
 local BAR = "Interface\\TargetingFrame\\UI-StatusBar"
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t"
 local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local function colourText(c, text)
-  return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, text)
+  local function b(v) return math.floor(v * 255 + 0.5) end
+  return string.format("|cff%02x%02x%02x%s|r", b(c[1]), b(c[2]), b(c[3]), text)
 end
 
 local function classText(class, text)
@@ -66,7 +78,7 @@ end
 -- rule(parent, y): a hairline under column headings, across the window
 local function rule(parent, y)
   local t = parent:CreateTexture(nil, "ARTWORK")
-  t:SetColorTexture(1, 1, 1, 0.15)
+  t:SetColorTexture(THEME.line[1], THEME.line[2], THEME.line[3], 0.9)
   t:SetHeight(1)
   t:SetPoint("TOPLEFT", 14, y)
   t:SetPoint("TOPRIGHT", -14, y)
@@ -165,6 +177,7 @@ local function fitWindow(f)
   local saved = L.frames[f:GetName()]
   f.scale = scaleOf(f)
   f:SetScale(f.scale)
+  f:SetAlpha(L.alpha or 1)
   setBounds(f)
   local w, h = clampSize(f, saved and saved.w or f.sizing.w, saved and saved.h or f.sizing.h)
   f:SetSize(w, h)
@@ -193,7 +206,9 @@ local function window(name, title, opts)
   if f.SetDontSavePosition then f:SetDontSavePosition(true) end -- ours to keep, not the client's layout cache
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStart", function(self)
+    if not ns.Store.layout().locked then self:StartMoving() end -- Settings: lock window positions
+  end)
   f:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     saveLayout(self)
@@ -203,9 +218,15 @@ local function window(name, title, opts)
   end)
   f:SetClampedToScreen(true)
   f:SetFrameStrata("DIALOG")
+  -- the site's ink over the stock frame's background, and its bronze for the title
+  f.themeBg = f:CreateTexture(nil, "BACKGROUND", nil, 2)
+  f.themeBg:SetPoint("TOPLEFT", 3, -22)
+  f.themeBg:SetPoint("BOTTOMRIGHT", -3, 3)
+  f.themeBg:SetColorTexture(THEME.ink[1], THEME.ink[2], THEME.ink[3], 0.92)
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.title:SetPoint("TOP", 0, -5)
   f.title:SetText(title)
+  f.title:SetTextColor(THEME.bronzeHi[1], THEME.bronzeHi[2], THEME.bronzeHi[3])
   tinsert(UISpecialFrames, name)
 
   local grip = CreateFrame("Button", nil, f)
@@ -242,10 +263,18 @@ function Frames.setScale(s)
   for _, f in ipairs(windows) do fitWindow(f) end
 end
 
+function Frames.alpha() return ns.Store.layout().alpha or 1 end
+
+-- setAlpha(a): how opaque every Toads LC window is, 0.3 to 1, kept per character
+function Frames.setAlpha(a)
+  ns.Store.layout().alpha = a
+  for _, f in ipairs(windows) do f:SetAlpha(a) end
+end
+
 -- resetLayout(): every window back to its default size and place, at scale 1
 function Frames.resetLayout()
   local L = ns.Store.layout()
-  L.frames, L.scale = {}, 1
+  L.frames, L.scale, L.alpha = {}, 1, 1
   for _, f in ipairs(windows) do fitWindow(f) end
 end
 
@@ -300,6 +329,13 @@ local function contextMenu(owner, entries)
   end
   EasyMenu(menu, Frames.menuFrame, "cursor", 0, 0, "MENU")
 end
+
+-- the building blocks above, for the main window (adapters/Main.lua)
+Frames.ui = {
+  button = button, tip = tip, stripe = stripe, rule = rule, emptyText = emptyText, colourText = colourText,
+  classText = classText, iconOf = iconOf, itemHover = itemHover, window = window, fitWindow = fitWindow,
+  contextMenu = contextMenu, THEME = THEME, AMBER = AMBER, GREEN = GREEN, GREY = GREY, RED = RED, BLUE = BLUE, BAR = BAR,
+}
 
 ---------------------------------------------------------------------------
 -- candidate frame: what a raider sees when sessions open. One row per item still waiting for
