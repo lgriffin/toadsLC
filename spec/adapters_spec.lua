@@ -317,6 +317,20 @@ describe("/tlc sim", function()
     assert.matches("Priority %(Toads LC%)", table.concat(tt.lines, "\n"))
   end)
 
+  it("colours the countdown as it runs out and says what phase the council frame is in", function()
+    W.ns.App.import(H.read("fixtures/priority.sample.json"))
+    W.slash("sim [Dragonspine Trophy] 20")
+    local row = _G.ToadsLCCandidateFrame.rows[1]
+    assert.matches("^|cff4ce566", row.timer:GetText()) -- plenty of time: green
+    W.tick(16)
+    W.ns.Frames.refreshCandidate()
+    assert.matches("^|cffff4c4c4 s", row.timer:GetText()) -- last 5 seconds: red
+    W.ns.Frames.showCouncil()
+    local council = _G.ToadsLCCouncilFrame
+    assert.matches("Answers open", council.status:GetText())
+    assert.are.equal("", council.position:GetText()) -- one item: no "1 of 1"
+  end)
+
   it("puts a window back at this character's saved size", function()
     W.install({ charDb = { scale = 1, frames = { ToadsLCLootFrame = { w = 700, h = 110 + 5 * 22, point = "CENTER",
       relPoint = "CENTER", x = 0, y = 0 } } } })
