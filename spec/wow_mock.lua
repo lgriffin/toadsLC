@@ -90,7 +90,7 @@ local function setup(C, G, opts)
     NewTicker = function(_, fn) table.insert(C.timers, fn) end,
     After = function(_, fn) table.insert(C.later, fn) end,
   }
-  G.SendChatMessage = function(text, ch) table.insert(C.chat, { text = text, channel = ch }) end
+  G.SendChatMessage = function(text, ch, _, target) table.insert(C.chat, { text = text, channel = ch, target = target }) end
   G.RandomRoll = function(a, b) table.insert(C.rolls, { a, b }) end
   G.IsInRaid = function() return true end
   G.IsInGroup = function() return true end

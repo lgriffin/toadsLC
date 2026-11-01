@@ -47,6 +47,17 @@ function App.announce(s, text, warn)
   end
 end
 
+-- whisperWinner(s, text): tell the winner privately; nobody needs a whisper from themselves,
+-- and /tlc sim winners are made up, so the player only sees what would have been sent
+function App.whisperWinner(s, text)
+  if not text or Priority.nameKey(s.awardedTo) == Priority.nameKey(Roster.me()) then return end
+  if ns.Sim.isSim(s) then
+    if not ns.Sim.quiet then Chat.print("[sim] to " .. s.awardedTo .. ": " .. text:gsub("^%[ToadsLC%] ", "")) end
+  else
+    Chat.whisper(text, s.awardedTo)
+  end
+end
+
 local function onChange(s, what)
   local me = Roster.me()
   if what == "SESSION_OPEN" then
@@ -69,6 +80,7 @@ local function onChange(s, what)
   elseif what == "AWARD" then
     local set = Store.settings()
     if s:isLeader(me) and set.announceAward ~= false then App.announce(s, s:awardLine(set.awardMessage), true) end
+    if s:isLeader(me) and set.whisperAward ~= false then App.whisperWinner(s, s:whisperLine(set.whisperMessage)) end
     ns.Trade.onAward(s)
   elseif what == "STATE" then
     Frames.sessionsChanged()

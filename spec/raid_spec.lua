@@ -80,7 +80,8 @@ describe("a raid of clients", function()
       assert.are.equal("done", latest(c).phase, c.me)
       assert.are.equal("Anasazi", latest(c).awardedTo, c.me)
     end
-    assert.matches("Anasazi", leader.chat[#leader.chat].text)
+    assert.matches("Anasazi", leader.chat[#leader.chat - 1].text)
+    assert.are.equal("Anasazi", leader.chat[#leader.chat].target) -- and the winner is whispered
     assert.are.equal(1, #leader.ns.Store.records(false)) -- only the leader keeps the record
     assert.are.equal(0, #officer.ns.Store.records(false))
   end)

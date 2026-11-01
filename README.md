@@ -196,16 +196,19 @@ Stacks are never put in for you, so a stack of several of the same item has to b
 Soulbound raid drops can only be traded for two hours after they were looted; the game refuses
 the trade after that.
 
-### Raid chat announcements
+### Raid chat announcements and the winner's whisper
 
-So everyone can see where the loot went, two lines go to raid chat by themselves:
+So everyone can see where the loot went, two lines go to raid chat by themselves, and the
+winner gets a whisper:
 
 - **When an item is awarded**, from the session leader (also as a raid warning with assist):
   `[ToadsLC] [Dragonspine Trophy] awarded to Anasazi (Rogue, tier 1, rolled 41).`
 - **When it is traded to the winner**, from whoever traded it, one line per item:
   `[ToadsLC] [Dragonspine Trophy] traded to Anasazi.`
+- **A whisper to the winner** when the item is awarded, from the session leader:
+  `[ToadsLC] You won [Dragonspine Trophy] (Rogue, tier 1, rolled 41). Grats!`
 
-The loot master can reword either one. Type `/tlc announce` to see both, with an example, and
+The loot master can reword any of them. Type `/tlc announce` to see all three, with an example, and
 change them with your own text and any of these placeholders:
 
 | Placeholder | Becomes |
@@ -215,12 +218,13 @@ change them with your own text and any of these placeholders:
 | `{details}` | spec, tier and roll, as in the default line (`Rogue, tier 1, rolled 41`) |
 | `{response}` | what they pressed: BiS, Upgrade or OffSpec |
 | `{spec}`, `{tier}`, `{roll}` | each on its own |
-| `{by}` | who traded it (trade line only) |
+| `{by}` | who awarded it (award line and whisper) or who traded it (trade line) |
 
 ```
 /tlc announce award Grats {name} on {item} ({response}, rolled {roll})!
 /tlc announce trade {item} handed to {name} by {by}.
-/tlc announce award off        (or on; trade works the same)
+/tlc announce whisper Grats on {item}! Trade {by} when you're free.
+/tlc announce award off        (or on; trade and whisper work the same)
 /tlc announce award reset      (back to the default wording)
 ```
 
@@ -329,8 +333,8 @@ To test the real thing with five players in a dungeon, follow
 | `/tlc loot party on` / `off` | party leader | record corpses in a party too, rare and up, for a 5-man test run |
 | `/tlc trade` | whoever holds the loot | what is still to trade to the winners; opening a trade with one puts their items in |
 | `/tlc trade done <name>` / `on` / `off` | whoever holds the loot | mark a winner's items handed over; turn the trade filling on or off |
-| `/tlc announce` | leader / whoever holds the loot | show the award and trade lines posted to raid chat |
-| `/tlc announce award` / `trade` `<text>` / `on` / `off` / `reset` | leader / whoever holds the loot | reword a line with placeholders, turn it on or off, or go back to the default |
+| `/tlc announce` | leader / whoever holds the loot | show the award and trade lines and the winner's whisper |
+| `/tlc announce award` / `trade` / `whisper` `<text>` / `on` / `off` / `reset` | leader / whoever holds the loot | reword a line with placeholders, turn it on or off, or go back to the default |
 | `/tlc close` | leader | close responses on the last session early |
 | `/tlc award` | leader | award the last session to who the list says |
 | `/tlc award <name> [reason]` | leader | award to someone else, recorded as an override |

@@ -566,6 +566,7 @@ end
 -- one that has nothing to say for this award is left empty, and so are any brackets it leaves.
 Session.AWARD_TEMPLATE = "[ToadsLC] {item} awarded to {name} ({details})."
 Session.TRADE_TEMPLATE = "[ToadsLC] {item} traded to {name}."
+Session.WHISPER_TEMPLATE = "[ToadsLC] You won {item} ({details}). Grats!"
 Session.PLACEHOLDERS = { "item", "name", "details", "response", "spec", "tier", "roll", "by" }
 
 local KNOWN = {}
@@ -603,9 +604,9 @@ end
 local RESPONSE = { bis = "BiS", main = "Upgrade", offspec = "OffSpec" }
 
 -- awardFields() -> the placeholders for the award: item (link), name, details ("Fury, tier 1,
--- rolled 87"), response (BiS / Upgrade / OffSpec), spec, tier, roll
+-- rolled 87"), response (BiS / Upgrade / OffSpec), spec, tier, roll, by (who awarded it)
 function Session:awardFields()
-  local f = { item = self.itemLink or self.itemName, name = self.awardedTo or "" }
+  local f = { item = self.itemLink or self.itemName, name = self.awardedTo or "", by = self.awardedBy }
   local e = self.awardedTo and self:entryFor(self.awardedTo)
   if e then
     -- a button press with no roll yet has a response but no max
@@ -618,6 +619,12 @@ function Session:awardFields()
     f.details = e.roll and strformat("%s, rolled %d", desc, e.roll) or desc
   end
   return f
+end
+
+-- whisperLine(template): what the winner is whispered (default WHISPER_TEMPLATE)
+function Session:whisperLine(template)
+  if not self.awardedTo then return nil end
+  return Session.fill(template or Session.WHISPER_TEMPLATE, self:awardFields())
 end
 
 -- awardLine(template): the award for raid chat, worded by template (default AWARD_TEMPLATE)
