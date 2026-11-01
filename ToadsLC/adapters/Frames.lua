@@ -26,6 +26,7 @@ local GREEN = THEME.teal
 local GREY = THEME.dim
 local RED = THEME.bad
 local BLUE = THEME.info
+local ORANGE = THEME.bronze -- BiS answers stand out
 local ROW_H = 18
 local BAR = "Interface\\TargetingFrame\\UI-StatusBar"
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t"
@@ -346,7 +347,7 @@ Frames.ui = {
 local cand
 local CAND_ROWS, CAND_MAX = 6, 12 -- rows at the default size, and at most
 local CAND_H = 44
-local CAND_BUTTONS = 162 -- the answer buttons, measured from the row's right edge
+local CAND_BUTTONS = 216 -- the answer buttons, measured from the row's right edge
 
 local function waitingForMe()
   local reg, out = ns.App.registry, {}
@@ -364,7 +365,7 @@ end
 local function tierText(s)
   local me = ns.Roster.specOf("player")
   local tier = s.item and Priority.tierOf(s.item, { player = ns.Roster.me(), class = me.class, spec = me.spec })
-  if not s.item then return "Not on the priority list: highest roll wins" end
+  if not s.item then return "Not on the priority list: BiS first, then highest roll" end
   if tier == 1 then return colourText(GREEN, string.format("Top priority: you're tier 1 of %d", #s.item.priority)) end
   if tier then return string.format("You're tier %d of %d", tier, #s.item.priority) end
   return colourText(GREY, "Your spec is not on the list for this item")
@@ -379,7 +380,7 @@ end
 
 local function buildCandidate()
   cand = window("ToadsLCCandidateFrame", "Toads LC: loot", {
-    w = 470, h = 96 + CAND_ROWS * CAND_H, minW = 420, minH = 96 + CAND_H, maxW = 900, maxH = 96 + CAND_MAX * CAND_H,
+    w = 500, h = 96 + CAND_ROWS * CAND_H, minW = 420, minH = 96 + CAND_H, maxW = 900, maxH = 96 + CAND_MAX * CAND_H,
     y = 180, layout = function(f, w, h)
       f.visible = math.max(1, math.min(CAND_MAX, math.floor((h - 96) / CAND_H)))
       local rowW = w - 24
@@ -406,7 +407,7 @@ local function buildCandidate()
   cand.rows = {}
   for i = 1, CAND_MAX do
     local row = CreateFrame("Frame", nil, cand)
-    row:SetSize(446, CAND_H)
+    row:SetSize(476, CAND_H)
     row:SetPoint("TOPLEFT", 12, -28 - (i - 1) * CAND_H)
     stripe(row, i)
     row.icon = row:CreateTexture(nil, "ARTWORK")
@@ -434,14 +435,18 @@ local function buildCandidate()
     row.hover = itemHover(row, function() return row.session end)
     row.hover:SetPoint("LEFT", 2, 0)
     row.hover:SetSize(280, 36)
-    row.main = button(row, "MS", 50, answer(row, "main"))
-    row.main:SetPoint("BOTTOMRIGHT", -112, 2)
-    tip(row.main, "Main spec", "Rolls 1-100 for you. Main-spec answers are ranked by priority tier first, then roll.")
-    row.off = button(row, "OS", 64, answer(row, "offspec"))
-    row.off:SetPoint("LEFT", row.main, "RIGHT", 2, 0)
+    -- BiS and Upgrade both roll 1-100; the council sees BiS ranked first
+    row.bis = button(row, "BiS", 40, answer(row, "bis"))
+    row.bis:SetPoint("BOTTOMRIGHT", -176, 2)
+    tip(row.bis, "Best in slot", "Rolls 1-100 for you. Ranked by priority tier first, then BiS ahead of Upgrade, then roll.")
+    row.up = button(row, "Upgrade", 64, answer(row, "main"))
+    row.up:SetPoint("LEFT", row.bis, "RIGHT", 2, 0)
+    tip(row.up, "Upgrade", "Rolls 1-100 for you. Ranked by priority tier first, after BiS answers in the same tier, then roll.")
+    row.off = button(row, "OffSpec", 64, answer(row, "offspec"))
+    row.off:SetPoint("LEFT", row.up, "RIGHT", 2, 0)
     tip(row.off, "Off-spec", function()
       local max = row.session and row.session.rules.offspecRollMax or 99
-      return string.format("Rolls 1-%d for you. Off-spec answers rank after every main-spec answer; the council makes the final call.", max)
+      return string.format("Rolls 1-%d for you. Off-spec answers rank after every BiS and Upgrade answer; the council makes the final call.", max)
     end)
     row.pass = button(row, "Pass", 44, answer(row, "pass"))
     row.pass:SetPoint("LEFT", row.off, "RIGHT", 2, 0)
@@ -506,7 +511,6 @@ function Frames.refreshCandidate()
       row.bar:SetMinMaxValues(0, full)
       row.bar:SetValue(left)
       row.bar:SetStatusBarColor(c[1], c[2], c[3])
-      row.off:SetText(string.format("OS (%d)", s.rules.offspecRollMax))
     end
   end
   cand:Show()
@@ -538,6 +542,13 @@ local COLS = {
   { key = "votes", title = "Votes", w = 60 },
   { key = "note", title = "Note", w = 186 },
 }
+
+-- responseText(s, e): the Response cell, named like the raider's buttons; BiS stands out
+local function responseText(s, e)
+  if e.max == s.rules.offspecRollMax or e.response == "offspec" then return colourText(BLUE, "OffSpec") end
+  if e.response == "bis" then return colourText(ORANGE, "BiS") end
+  return "Upgrade"
+end
 
 local function shownSession()
   local reg = ns.App.registry
@@ -835,8 +846,7 @@ function Frames.refresh()
       elseif says and opts.listRoll then
         says = "list says (priority)"
       end
-      local off = e.max == s.rules.offspecRollMax or e.response == "offspec"
-      local resp = e.ignored and e.ignored or (off and colourText(BLUE, "off-spec") or "main")
+      local resp = e.ignored or responseText(s, e)
       local n = counts[k] or 0
       row.voters = voters[k]
       local pips = string.rep("|TInterface\\COMMON\\Indicator-Green:12|t", math.min(n, 6))
@@ -994,7 +1004,7 @@ local function buildLoot()
       if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "session") end
     end)
     row.session:SetPoint("RIGHT", -40, 0)
-    tip(row.session, "Council session", "Raiders answer MS, OS or Pass; officers vote; you award.")
+    tip(row.session, "Council session", "Raiders answer BiS, Upgrade, OffSpec or Pass; officers vote; you award.")
     row.roll = button(row, "Roll", 40, function()
       if row.entry then ns.Loot.start(ns.Loot.list:numberOf(row.entry), "roll") end
     end)

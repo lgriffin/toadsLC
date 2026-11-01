@@ -419,7 +419,7 @@ function Codec.validatePriority(doc)
   end, doc)
 end
 
-local RESPONSES = { "main", "offspec" }
+local RESPONSES = { "bis", "main", "offspec" }
 local VIA = { "votes", "proposal", "list", "highest-roll", "manual" }
 
 local function checkSession(s, path)

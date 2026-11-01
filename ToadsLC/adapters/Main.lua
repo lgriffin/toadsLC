@@ -170,12 +170,12 @@ local function tradeLeft(at, id)
   return c, string.format("%dm", math.ceil(left / 60))
 end
 
-local RESPONSE = { bis = "BiS", main = "Main spec", offspec = "Off-spec", pass = "Pass" }
+local RESPONSE = { bis = "BiS", main = "Upgrade", offspec = "Off-spec", pass = "Pass" }
 
 local function answerText(s, e)
   if e.ignored then return colourText(GREY, e.ignored) end
   if e.max == s.rules.offspecRollMax or e.response == "offspec" then return colourText(BLUE, "Off-spec") end
-  return RESPONSE[e.response] or "Main spec"
+  return RESPONSE[e.response] or "Upgrade"
 end
 
 -- councilOf(s) -> the leader and council, once each

@@ -24,7 +24,7 @@
         "player": { "$ref": "#/$defs/name" },
         "class": { "type": ["string", "null"] },
         "spec": { "type": ["string", "null"] },
-        "response": { "enum": ["main", "offspec"] },
+        "response": { "description": "bis and main (Upgrade) both roll 1-100; bis ranks above main.", "enum": ["bis", "main", "offspec"] },
         "roll": { "type": ["integer", "null"], "minimum": 0 },
         "max": { "type": ["integer", "null"], "minimum": 0 },
         "tier": { "type": ["integer", "null"], "minimum": 1 },
