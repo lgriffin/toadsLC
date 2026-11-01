@@ -18,7 +18,7 @@ local wow_read = {
   "UnitIsGroupAssistant", "UnitGUID", "GetTime", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
   "WOW_PROJECT_ID", "bit", "C_Container", "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
   "ClearCursor", "ClickTradeButton", "GetTradePlayerItemLink", "TradeFrameRecipientNameText", "NUM_BAG_SLOTS",
-  "ERR_TRADE_COMPLETE", "ERR_TRADE_CANCELLED", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
+  "ERR_TRADE_COMPLETE", "ERR_TRADE_CANCELLED", "Minimap", "GetCursorPosition", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
 }
 
 files["ToadsLC/adapters"] = { globals = wow, read_globals = wow_read }

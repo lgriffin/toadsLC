@@ -39,7 +39,9 @@ class PackageTest(unittest.TestCase):
         self.assertEqual(f"ToadsLC-{meta['Version']}.zip", out.name)
         with zipfile.ZipFile(out) as z:
             names = z.namelist()
-        self.assertEqual(["ToadsLC/ToadsLC.toc"] + [f"ToadsLC/{f}" for f in files], names)
+        media = package.media_files(ROOT / "ToadsLC")
+        self.assertIn("Media/logo.tga", media)  # textures load by path, so they ship though the .toc doesn't list them
+        self.assertEqual(["ToadsLC/ToadsLC.toc"] + [f"ToadsLC/{f}" for f in files + media], names)
         self.assertTrue(all(n.startswith("ToadsLC/") for n in names))
         self.assertFalse(any(n.endswith((".json", ".py", "_spec.lua")) for n in names))
 

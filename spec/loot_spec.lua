@@ -491,6 +491,59 @@ describe("/tlc loot all", function()
     assert.are.same({}, _G.ToadsLCCharDB.frames)
   end)
 
+  it("sets one opacity for every window, locks them against dragging, and keeps both per character", function()
+    W.loot(CORPSE)
+    W.slash("loot all")
+    local cand = _G.ToadsLCCandidateFrame
+    local alpha
+    cand.SetAlpha = function(_, a) alpha = a end
+    W.slash("opacity 60")
+    assert.are.equal(0.6, _G.ToadsLCCharDB.alpha)
+    assert.are.equal(0.6, alpha)
+    assert.matches("opacity 60%%", W.printed[#W.printed])
+    W.slash("opacity 5") -- too faint to find again: refused
+    assert.are.equal(0.6, _G.ToadsLCCharDB.alpha)
+    W.slash("opacity 0.8")
+    assert.are.equal(0.8, alpha)
+
+    local moved = false
+    cand.StartMoving = function() moved = true end
+    W.slash("lock")
+    assert.is_true(_G.ToadsLCCharDB.locked)
+    assert.is_false(cand.grip.shown)
+    cand.scripts.OnDragStart(cand)
+    assert.is_false(moved)
+    W.slash("unlock")
+    assert.is_nil(_G.ToadsLCCharDB.locked)
+    assert.is_true(cand.grip.shown)
+    cand.scripts.OnDragStart(cand)
+    assert.is_true(moved)
+
+    W.slash("lock")
+    W.slash("scale reset")
+    assert.are.equal(1, alpha)
+    assert.is_nil(_G.ToadsLCCharDB.locked)
+  end)
+
+  it("puts the Toads logo on every window and a minimap button that opens the loot list", function()
+    W.loot(CORPSE)
+    W.slash("loot")
+    local frame = _G.ToadsLCLootFrame
+    assert.are.equal("Interface\\AddOns\\ToadsLC\\Media\\logo", frame.logo.texture)
+    local btn = _G.ToadsLCMinimapButton
+    assert.is_true(btn.shown)
+    assert.are.equal("Interface\\AddOns\\ToadsLC\\Media\\logo", btn.icon.texture)
+    frame:Hide()
+    btn.scripts.OnClick(btn, "LeftButton")
+    assert.is_true(frame.shown)
+    W.slash("minimap off")
+    assert.is_false(btn.shown)
+    assert.is_true(_G.ToadsLCCharDB.minimap.hide)
+    W.slash("minimap on")
+    assert.is_true(btn.shown)
+    assert.is_nil(_G.ToadsLCCharDB.minimap.hide)
+  end)
+
   it("refuses while an item is still taking rolls, and takes a time", function()
     W.loot(CORPSE)
     W.slash("loot 1")

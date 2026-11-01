@@ -19,6 +19,9 @@ local ROW_H = 18
 local BAR = "Interface\\TargetingFrame\\UI-StatusBar"
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t"
 local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
+-- the Toads pond medallion from toads.gg, 64x64 32-bit TGA
+local LOGO = "Interface\\AddOns\\ToadsLC\\Media\\logo"
+Frames.LOGO = LOGO
 
 local function colourText(c, text)
   return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, text)
@@ -165,6 +168,7 @@ local function fitWindow(f)
   local saved = L.frames[f:GetName()]
   f.scale = scaleOf(f)
   f:SetScale(f.scale)
+  f:SetAlpha(L.alpha)
   setBounds(f)
   local w, h = clampSize(f, saved and saved.w or f.sizing.w, saved and saved.h or f.sizing.h)
   f:SetSize(w, h)
@@ -193,7 +197,9 @@ local function window(name, title, opts)
   if f.SetDontSavePosition then f:SetDontSavePosition(true) end -- ours to keep, not the client's layout cache
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStart", function(self)
+    if not ns.Store.layout().locked then self:StartMoving() end
+  end)
   f:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     saveLayout(self)
@@ -206,6 +212,14 @@ local function window(name, title, opts)
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.title:SetPoint("TOP", 0, -5)
   f.title:SetText(title)
+  -- the Toads medallion sits over the top-left corner, like a portrait
+  local badge = CreateFrame("Frame", nil, f)
+  badge:SetSize(34, 34)
+  badge:SetPoint("TOPLEFT", -10, 10)
+  badge:SetFrameLevel((f:GetFrameLevel() or 0) + 10)
+  f.logo = badge:CreateTexture(nil, "OVERLAY")
+  f.logo:SetAllPoints()
+  f.logo:SetTexture(LOGO)
   tinsert(UISpecialFrames, name)
 
   local grip = CreateFrame("Button", nil, f)
@@ -216,7 +230,7 @@ local function window(name, title, opts)
   grip:SetHighlightTexture(GRIP .. "Highlight")
   grip:SetPushedTexture(GRIP .. "Down")
   grip:SetScript("OnMouseDown", function(_, which)
-    if which ~= "LeftButton" then return end
+    if which ~= "LeftButton" or ns.Store.layout().locked then return end
     setBounds(f)
     f:StartSizing("BOTTOMRIGHT")
   end)
@@ -228,6 +242,7 @@ local function window(name, title, opts)
     saveLayout(f)
   end)
   f.grip = grip
+  grip:SetShown(not ns.Store.layout().locked)
 
   windows[#windows + 1] = f
   f:Hide()
@@ -242,10 +257,28 @@ function Frames.setScale(s)
   for _, f in ipairs(windows) do fitWindow(f) end
 end
 
--- resetLayout(): every window back to its default size and place, at scale 1
+function Frames.alpha() return ns.Store.layout().alpha end
+
+-- setAlpha(a): one opacity (0.2 to 1) for every Toads LC window, kept per character
+function Frames.setAlpha(a)
+  ns.Store.layout().alpha = math.max(0.2, math.min(1, a))
+  for _, f in ipairs(windows) do f:SetAlpha(ns.Store.layout().alpha) end
+end
+
+function Frames.locked() return ns.Store.layout().locked == true end
+
+-- setLocked(on): locked windows can't be dragged or resized by accident mid-fight
+function Frames.setLocked(on)
+  local L = ns.Store.layout()
+  L.locked = on and true or nil
+  for _, f in ipairs(windows) do f.grip:SetShown(not L.locked) end
+end
+
+-- resetLayout(): every window back to its default size and place, at scale 1, fully opaque, unlocked
 function Frames.resetLayout()
   local L = ns.Store.layout()
-  L.frames, L.scale = {}, 1
+  L.frames, L.scale, L.alpha = {}, 1, 1
+  Frames.setLocked(false)
   for _, f in ipairs(windows) do fitWindow(f) end
 end
 

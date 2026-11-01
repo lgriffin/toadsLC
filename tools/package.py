@@ -64,6 +64,14 @@ def problems(addon_dir):
     return found
 
 
+def media_files(addon_dir):
+    """Textures the Lua and .toc load by path (Media/*.tga, *.blp); the .toc doesn't list them."""
+    media = addon_dir / "Media"
+    if not media.is_dir():
+        return []
+    return sorted(p.relative_to(addon_dir).as_posix() for p in media.rglob("*") if p.suffix.lower() in (".tga", ".blp"))
+
+
 def build(addon_dir, out_dir, version=None):
     """Write the zip; version (x.y.z) replaces the .toc's ## Version in the zipped copy."""
     meta, files = read_toc(addon_dir)
@@ -72,7 +80,7 @@ def build(addon_dir, out_dir, version=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{addon_dir.name}-{version}.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for rel in [toc] + files:
+        for rel in [toc] + files + media_files(addon_dir):
             info = zipfile.ZipInfo(f"{addon_dir.name}/{rel}", FIXED_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
