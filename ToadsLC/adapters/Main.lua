@@ -1292,7 +1292,7 @@ function Main.minimap()
     mini:RegisterForDrag("LeftButton")
     mini:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     local icon = mini:CreateTexture(nil, "BACKGROUND")
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
+    icon:SetTexture(ns.Frames.LOGO or "Interface\\Icons\\INV_Misc_Bag_10") -- the Toads medallion
     icon:SetSize(20, 20)
     icon:SetPoint("TOPLEFT", 7, -5)
     local border = mini:CreateTexture(nil, "OVERLAY")

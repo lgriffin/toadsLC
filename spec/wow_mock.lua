@@ -26,6 +26,7 @@ local function newWidget(C, kind, name)
   function methods:CreateFontString() return newWidget(C, "FontString") end
   function methods:CreateTexture() return newWidget(C, "Texture") end
   function methods:GetName() return self.name end
+  function methods:SetTexture(t) self.texture = t end
   -- a GameTooltip shown from a link fires OnTooltipSetItem, as the client does
   function methods:SetHyperlink(link)
     self.link, self.lines = link, nil

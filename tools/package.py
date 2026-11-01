@@ -57,11 +57,34 @@ def problems(addon_dir):
         seen.add(f)
         if not (addon_dir / f).is_file():
             found.append(f"{f} is listed in the .toc but does not exist")
+    media = addon_dir / "Media"
+    for path in sorted(media.rglob("*")) if media.is_dir() else []:
+        if path.suffix.lower() in (".tga", ".blp") and _linked(addon_dir, path):
+            found.append(f"{path.relative_to(addon_dir).as_posix()} is a symlink; ship the texture itself")
     for path in sorted(addon_dir.rglob("*.lua")):
         rel = path.relative_to(addon_dir).as_posix()
         if rel not in seen:
             found.append(f"{rel} is not listed in the .toc, so the client never loads it")
     return found
+
+
+def media_files(addon_dir):
+    """Textures the Lua and .toc load by path (Media/*.tga, *.blp); the .toc doesn't list them."""
+    media = addon_dir / "Media"
+    if not media.is_dir():
+        return []
+    return sorted(p.relative_to(addon_dir).as_posix() for p in media.rglob("*")
+                  if p.suffix.lower() in (".tga", ".blp") and p.is_file() and not _linked(addon_dir, p))
+
+
+def _linked(addon_dir, path):
+    """True if the path, or a folder on the way to it inside the addon, is a symlink: the zip
+    must only ever hold the addon's own files."""
+    while path != addon_dir:
+        if path.is_symlink():
+            return True
+        path = path.parent
+    return False
 
 
 def build(addon_dir, out_dir, version=None):
@@ -72,7 +95,7 @@ def build(addon_dir, out_dir, version=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{addon_dir.name}-{version}.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for rel in [toc] + files:
+        for rel in [toc] + files + media_files(addon_dir):
             info = zipfile.ZipInfo(f"{addon_dir.name}/{rel}", FIXED_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16

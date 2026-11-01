@@ -491,6 +491,13 @@ describe("/tlc loot all", function()
     assert.are.same({}, _G.ToadsLCCharDB.frames)
   end)
 
+  it("puts the Toads logo on every window", function()
+    W.loot(CORPSE)
+    W.slash("loot")
+    local frame = _G.ToadsLCLootFrame
+    assert.are.equal("Interface\\AddOns\\ToadsLC\\Media\\logo", frame.logo.texture)
+  end)
+
   it("refuses while an item is still taking rolls, and takes a time", function()
     W.loot(CORPSE)
     W.slash("loot 1")

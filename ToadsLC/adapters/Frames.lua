@@ -31,6 +31,9 @@ local ROW_H = 18
 local BAR = "Interface\\TargetingFrame\\UI-StatusBar"
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t"
 local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
+-- the Toads pond medallion from toads.gg, 64x64 32-bit TGA
+local LOGO = "Interface\\AddOns\\ToadsLC\\Media\\logo"
+Frames.LOGO = LOGO
 
 local function colourText(c, text)
   local function b(v) return math.floor(v * 255 + 0.5) end
@@ -228,6 +231,14 @@ local function window(name, title, opts)
   f.title:SetPoint("TOP", 0, -5)
   f.title:SetText(title)
   f.title:SetTextColor(THEME.bronzeHi[1], THEME.bronzeHi[2], THEME.bronzeHi[3])
+  -- the Toads medallion sits over the top-left corner, like a portrait
+  local badge = CreateFrame("Frame", nil, f)
+  badge:SetSize(34, 34)
+  badge:SetPoint("TOPLEFT", -10, 10)
+  badge:SetFrameLevel((f:GetFrameLevel() or 0) + 10)
+  f.logo = badge:CreateTexture(nil, "OVERLAY")
+  f.logo:SetAllPoints()
+  f.logo:SetTexture(LOGO)
   tinsert(UISpecialFrames, name)
 
   local grip = CreateFrame("Button", nil, f)
