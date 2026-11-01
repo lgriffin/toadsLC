@@ -23,14 +23,17 @@ Main.TRADE_WINDOW = 2 * 3600 -- raid loot can be traded to the raid for two hour
 local main
 local pages, order = {}, {}
 local current
-local locked = false -- "Lock" in the side bar: hide the council pages again until the password is typed
+-- "Lock" in the side bar hides the council pages again until the password is typed; kept per
+-- character, so a /reload doesn't lift it
+local function isLocked() return ns.Store.layout().councilLocked == true end
+local function setLocked(v) ns.Store.layout().councilLocked = v or nil end
 
 local function reg() return ns.App.registry end
 local function now() return ns.App.now() end
 local function me() return ns.Roster.me() end
 
 -- unlocked(): this character typed tonight's raid password and has not locked the window since
-function Main.unlocked() return ns.App.secret() ~= nil and not locked end
+function Main.unlocked() return ns.App.secret() ~= nil and not isLocked() end
 
 ---------------------------------------------------------------------------
 -- small widgets
@@ -264,6 +267,9 @@ local function list(parent, opts)
         row.icon:SetSize(16, 16)
         row.hover = U.itemHover(row, function() return row.link end)
         row.hover:SetHeight(L.rowH)
+        if opts.click then -- the hover area takes the mouse: a click on the item name still opens the row
+          row.hover:SetScript("OnMouseUp", function(_, which) if row.item then opts.click(row.item, which, row) end end)
+        end
       end
     end
     if opts.build then opts.build(row) end
@@ -421,7 +427,10 @@ page("unlock", {
       "Join as officer", "Use the password the raid leader gave the council (not in raid chat). Your votes count once it matches theirs."), 120)
     p.begin = sized(button(p, "Begin raid", 100, function() Main.join(p.box:GetText(), true) end,
       "Begin raid (raid leader)", "Pick tonight's password: council traffic is signed and encrypted with it. Give it to the officers."), 100)
-    p.forget = sized(button(p, "Use another password", 150, function() ns.App.endRaid(); Main.refresh() end,
+    p.forget = sized(button(p, "Use another password", 150, function()
+      confirm("Forget tonight's raid password on this character? You'll be out of the council's traffic until you Join again.",
+        function() ns.App.endRaid(); setLocked(false); Main.refresh() end)
+    end,
       "Use another password", "Forgets tonight's password on this character, so you can Join or Begin with a new one."), 150)
     p.box:SetScript("OnEnterPressed", function()
       if ns.App.secret() then Main.unlock(p.box:GetText()) else Main.join(p.box:GetText(), false) end
@@ -452,7 +461,7 @@ function Main.unlock(password)
     gateMsg("That isn't the password you joined with tonight.")
     return false
   end
-  locked = false
+  setLocked(false)
   Main.go("loot")
   return true
 end
@@ -465,13 +474,13 @@ function Main.join(password, hosting)
   end
   if hosting then ns.App.beginRaid(password) else ns.App.joinRaid(password) end
   if not ns.App.secret() then return false end
-  locked = false
+  setLocked(false)
   Main.go("loot")
   return true
 end
 
 function Main.lock()
-  locked = true
+  setLocked(true)
   Main.go("rolls")
 end
 
@@ -492,9 +501,9 @@ local function buildLootList(p)
   v.list = list(v, {
     top = 46, bottom = 66, rowH = 22,
     cols = { { key = "num", title = "#", w = 22 }, { key = "item", title = "Item", icon = true },
-             { key = "boss", title = "Boss", w = 100 }, { key = "dropped", title = "Dropped", w = 52 },
-             { key = "trade", title = "Trade left", w = 64 }, { key = "status", title = "Status", w = 170 },
-             { key = "act", title = "", w = 124 } },
+             { key = "boss", title = "Boss", w = 90 }, { key = "dropped", title = "Dropped", w = 46 },
+             { key = "trade", title = "Trade left", w = 62 }, { key = "status", title = "Status", w = 160 },
+             { key = "act", title = "", w = 122 } },
     click = function(e) p.detail = e.key; Main.refresh() end,
     build = function(row)
       row.announce = button(row, "Announce", 76, function()
@@ -630,7 +639,9 @@ local function buildLootDetail(p)
   d.reroll = sized(button(d, "Re-roll tied", 100, function() ns.App.reroll(sid()) end, "Re-roll tied",
     "The players tied at the top roll again."), 100)
   d.award = sized(button(d, "Award", 160, function(self) if self.player then ns.App.award(sid(), self.player, self.via) end end,
-    "Award", "Awards the item as the list (or the council's votes) says."), 160)
+    "Award", function(self)
+      return self.via == "votes" and "Awards the item to the council's vote." or "Awards the item to the list's pick."
+    end), 160)
   d.awardTo = sized(button(d, "Award to…", 90, function()
     ask("Award to (name):", function(name)
       ask("Reason for awarding " .. name .. ":", function(reason) ns.App.award(sid(), name, "manual", reason) end)
@@ -666,10 +677,12 @@ local function refreshLootDetail(p)
     d.list.fill({}, function() end, "")
   else
     local missing, total = Main.missingVotes(s)
+    -- who voted for whom only when the rules show it (votesVisibleTo = "council"); else counts
+    local named = s.rules.votesVisibleTo == "council"
     local voted = {}
     for _, n in ipairs(councilOf(s)) do
       local v = s.votes[Priority.nameKey(n)]
-      if v then voted[#voted + 1] = n .. " (" .. v .. ")" end
+      if v then voted[#voted + 1] = named and (n .. " (" .. v .. ")") or n end
     end
     local line = string.format("Council votes %d of %d.", total - #missing, total)
     if #voted > 0 then line = line .. " Voted: " .. table.concat(voted, ", ") .. "." end
@@ -693,7 +706,7 @@ local function refreshLootDetail(p)
       row.cells.roll:SetText(c.roll and tostring(c.roll) or colourText(GREY, "…"))
       row.cells.tier:SetText(not c.ignored and c.tier and tostring(c.tier) or "-")
       local n = counts[k] or 0
-      local who = n > 0 and table.concat(voters[k] or {}, ", ") or ""
+      local who = n == 0 and "" or (named and table.concat(voters[k] or {}, ", ") or tostring(n))
       if myVote and Priority.nameKey(myVote) == k then who = colourText(GREEN, who) end
       row.cells.votes:SetText(who)
       local pick = not c.ignored and r.ranked[1] == c and (r.winner == c or not r.winner)
@@ -710,9 +723,10 @@ local function refreshLootDetail(p)
   d.close:SetShown(leader and s.phase == "open" or false)
   d.reroll:SetShown(leader and s.phase == "voting" and s:result().tie or false)
   local opts = s and s:awardOptions() or {}
+  -- only the list's pick or the council's votes: a tie, or a list that names nobody, goes to
+  -- Re-roll tied, the council window or Award to… (whose reason is recorded)
   local pick, via = opts.list or opts.listPriority, "list"
   if not pick and opts.votes then pick, via = opts.votes, "votes" end
-  if not pick and opts.highest then pick, via = opts.highest, "highest-roll" end
   local canAward = leader and s.phase ~= "done" or false
   d.award.player, d.award.via = canAward and pick or nil, via
   d.award:SetText(pick and ("Award: " .. pick) or "Award")
@@ -942,8 +956,9 @@ page("announce", {
       local part = {}
       part.on = checkbox(p, 0, y, LABELS[which] or (a.what .. " announced"),
         function() return ns.Store.settings()[a.toggle] ~= false end, function(on) ns.Store.settings()[a.toggle] = on end)
+      text(p, "GameFontNormalSmall", 0, y - 26, "Wording")
       part.box = input(p, 300, false)
-      part.box:SetPoint("TOPLEFT", 6, y - 28)
+      part.box:SetPoint("TOPLEFT", 56, y - 22)
       part.box:SetPoint("RIGHT", p, "RIGHT", -4, 0)
       part.save = sized(button(p, "Save", 70, function()
         local t = part.box:GetText()
@@ -1166,7 +1181,7 @@ end
 
 function Main.build()
   main = U.window("ToadsLCMainFrame", "Toads LC", {
-    w = 820, h = 500, minW = 680, minH = 420, maxW = 1500, maxH = 1100,
+    w = 840, h = 500, minW = 760, minH = 420, maxW = 1500, maxH = 1100,
     layout = function(f, w, h)
       f.cw, f.ch = w - NAV_W - 34, h - 44
       for _, key in ipairs(order) do
@@ -1288,7 +1303,8 @@ function Main.minimap()
       if which == "RightButton" then Main.go(Main.unlocked() and "loot" or "rolls") else Main.toggle() end
     end)
     mini:SetScript("OnDragStart", function(self)
-      self:SetScript("OnUpdate", function()
+      self:SetScript("OnUpdate", function(btn)
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then btn:SetScript("OnUpdate", nil); return end
         local mx, my = Minimap:GetCenter()
         local cx, cy = GetCursorPosition()
         local scale = Minimap:GetEffectiveScale()
