@@ -188,13 +188,20 @@ describe("main window", function()
     assert.matches("^e%.g%. ", page("announce").parts.award.sample:GetText())
   end)
 
-  it("hides pages whose feature isn't installed", function()
+  it("shows the mule page and the version check once they're installed, and hides a missing one", function()
     W.slash("begin " .. PASSWORD)
     W.slash("")
-    -- the mule (#21) is installed, version check (#22) not yet
+    -- the mule (#21) and the version check (#22) are both installed
     assert.is_true(_G.ToadsLCMainFrame.navs.mule:IsShown())
     Main.go("mule")
     assert.are.equal("mule", Main.current())
+    Main.go("raid")
+    assert.is_true(page("raid").versions:IsShown())
+    local check = W.ns.Version
+    W.ns.Version = nil
+    Main.go("loot")
+    Main.go("raid")
     assert.is_false(page("raid").versions:IsShown())
+    W.ns.Version = check
   end)
 end)

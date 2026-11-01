@@ -79,7 +79,7 @@ local function setup(C, G, opts)
   end
   G.CreateFrame = function(kind, name) local w = newWidget(C, kind, name); if name then G[name] = w end; return w end
   G.GetServerTime = function() return C.time end
-  G.GetAddOnMetadata = function() return "0.1.0" end
+  G.GetAddOnMetadata = function() return opts.version or "0.1.0" end
   G.C_ChatInfo = {
     RegisterAddonMessagePrefix = function() return true end,
     SendAddonMessage = function(prefix, text, dist, target)
@@ -110,6 +110,7 @@ local function setup(C, G, opts)
     local m = member(unit); return m and m.name
   end
   G.UnitClass = function(unit) local m = member(unit); return m and m.class, m and m.class end
+  G.UnitIsConnected = function(unit) local m = member(unit); return m ~= nil and not m.offline end
   G.UnitIsUnit = function(a, b) local x, y = member(a), member(b); return x ~= nil and x == y end
   G.UnitIsGroupLeader = function(unit) local m = member(unit); return m and m.leader or false end
   G.UnitIsGroupAssistant = function(unit) local m = member(unit); return m and m.assist or false end
