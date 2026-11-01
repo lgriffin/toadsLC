@@ -47,6 +47,17 @@ function App.announce(s, text, warn)
   end
 end
 
+-- whisperWinner(s, text): tell the winner privately; nobody needs a whisper from themselves,
+-- and /tlc sim winners are made up, so the player only sees what would have been sent
+function App.whisperWinner(s, text)
+  if not text or Priority.nameKey(s.awardedTo) == Priority.nameKey(Roster.me()) then return end
+  if ns.Sim.isSim(s) then
+    if not ns.Sim.quiet then Chat.print("[sim] to " .. s.awardedTo .. ": " .. text:gsub("^%[ToadsLC%] ", "")) end
+  else
+    Chat.whisper(text, s.awardedTo)
+  end
+end
+
 local function onChange(s, what)
   local me = Roster.me()
   if what == "SESSION_OPEN" then
@@ -69,6 +80,7 @@ local function onChange(s, what)
   elseif what == "AWARD" then
     local set = Store.settings()
     if s:isLeader(me) and set.announceAward ~= false then App.announce(s, s:awardLine(set.awardMessage), true) end
+    if s:isLeader(me) and set.whisperAward ~= false then App.whisperWinner(s, s:whisperLine(set.whisperMessage)) end
     ns.Trade.onAward(s)
   elseif what == "STATE" then
     Frames.sessionsChanged()
@@ -152,7 +164,7 @@ function App.respond(id, response, note)
   local s = App.registry:get(id)
   if not s then return end
   send(App.registry:respond(id, response, note, Roster.specOf("player")))
-  if response == "main" then RandomRoll(1, 100)
+  if response == "bis" or response == "main" then RandomRoll(1, 100)
   elseif response == "offspec" then RandomRoll(1, s.rules.offspecRollMax) end
 end
 
@@ -210,6 +222,8 @@ function App.rerollLast()
   local s = lastLed(function(x) return x.phase == "voting" end)
   if s then App.reroll(s.id) else Chat.print("Nothing to re-roll.") end
 end
+
+function App.unaward(id) send(App.registry:unaward(id)) end
 
 function App.undoLast()
   local s = lastLed(function(x) return x.phase == "done" end)
@@ -327,9 +341,11 @@ function App.debug(itemText)
   end
 end
 
+-- tonight() -> the session records saved tonight (the history page, /tlc history)
+function App.tonight() return Store.since(loginTime - 6 * 3600) end
+
 function App.history()
-  local since = loginTime - 6 * 3600
-  local recs = Store.since(since)
+  local recs = App.tonight()
   if #recs == 0 then Chat.print("No awards tonight."); return end
   for _, r in ipairs(recs) do
     local to = r.awardedTo ~= Codec.null and r.awardedTo or "not awarded"
@@ -447,7 +463,9 @@ local function start()
     function(sender) App.registry:notice("sealed", sender) end)
   ns.Tooltip.init()
   ns.Commands.init()
+  ns.Main.init()
   ns.Loot.init()
+  ns.Mule.init()
   ns.Trade.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
     local s = App.registry:restore(row.state, row.at)

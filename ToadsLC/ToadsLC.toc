@@ -25,8 +25,10 @@ adapters\Tooltip.lua
 adapters\Frames.lua
 adapters\Sim.lua
 adapters\Loot.lua
+adapters\Mule.lua
 adapters\Trade.lua
 adapters\Version.lua
+adapters\Main.lua
 adapters\Commands.lua
 
 Init.lua

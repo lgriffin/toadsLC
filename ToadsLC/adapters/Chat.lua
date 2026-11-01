@@ -67,3 +67,8 @@ function Chat.say(text, warn)
     SendChatMessage(Chat.split(text)[1], "RAID_WARNING")
   end
 end
+
+-- whisper(text, target): a private line to one player, split like the rest
+function Chat.whisper(text, target)
+  for _, line in ipairs(Chat.split(text)) do SendChatMessage(line, "WHISPER", nil, target) end
+end

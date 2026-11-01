@@ -107,6 +107,33 @@ describe("announcing awards and trades in a fake client", function()
     assert.matches("RAID: %[ToadsLC%] |c.-|Hitem:28830.-|h|r traded to Anasazi%.", W.chatText())
   end)
 
+  it("whispers the winner, in the loot master's wording, and not when turned off", function()
+    award(1, "Anasazi")
+    local function whispers(to)
+      local out = {}
+      for _, c in ipairs(W.chat) do
+        if c.channel == "WHISPER" and c.target == to then out[#out + 1] = c.text end
+      end
+      return out
+    end
+    local w = whispers("Anasazi")
+    assert.are.equal(1, #w)
+    assert.matches("^%[ToadsLC%] You won .*%[Dragonspine Trophy%].* %(Rogue, tier 1, rolled 41%)%. Grats!$", w[1])
+    W.slash("announce whisper {item} is yours, from {by}")
+    assert.matches("Whispers will read: %[Dragonspine Trophy%] is yours", W.printed[#W.printed])
+    award(2, "Gally")
+    assert.matches("Leggings.* is yours, from " .. W.ns.Roster.me(), whispers("Gally")[1])
+    W.slash("announce whisper off")
+    W.loot({ { 30627, "Tsunami Talisman", 4, GRUUL } })
+    award(3, "Hadur")
+    assert.are.equal(0, #whispers("Hadur"))
+  end)
+
+  it("does not whisper the loot master their own win", function()
+    award(1, W.ns.Roster.me())
+    for _, c in ipairs(W.chat) do assert.are_not.equal("WHISPER", c.channel) end
+  end)
+
   it("shows the settings and goes back to the default wording", function()
     W.slash("announce award {name} gets {item}")
     W.slash("announce award reset")
@@ -116,6 +143,7 @@ describe("announcing awards and trades in a fake client", function()
     local printed = table.concat(W.printed, "\n")
     assert.matches("Awards in raid chat: on %(default wording%)", printed)
     assert.matches("Trades in raid chat: on %(default wording%)", printed)
+    assert.matches("Whispers to the winner: on %(default wording%)", printed)
     assert.matches("Placeholders: {item}, {name}", printed)
   end)
 end)

@@ -11,14 +11,15 @@ local wow = {
 local wow_read = {
   "Ambiguate", "C_AddOns", "C_ChatInfo", "C_Timer", "CanInspect", "CheckInteractDistance", "ClearInspectPlayer",
   "CreateFrame", "DEFAULT_CHAT_FRAME", "EasyMenu", "Enum", "GameTooltip", "GetAddOnMetadata", "GetInstanceInfo",
-  "GetBuildInfo", "GetItemIcon", "GetItemInfo", "GetItemInfoInstant", "GetLootSlotInfo", "GetLootSlotLink", "GetLootSourceInfo", "GetNumLootItems", "GetNumGroupMembers", "GetNumSubgroupMembers",
+  "GetBuildInfo", "GetItemIcon", "GetItemInfo", "GetItemInfoInstant", "GetLootSlotInfo", "GetLootSlotLink", "GetLootSourceInfo", "GetLootMethod", "GetLootThreshold", "GetMasterLootCandidate", "GiveMasterLoot",
+  "GetLootSlotType", "LootSlotHasItem", "LOOT_SLOT_ITEM", "GetNumLootItems", "GetNumGroupMembers", "GetNumSubgroupMembers",
   "GetRealmName", "GetServerTime", "GetTalentTabInfo", "InCombatLockdown", "IsInGroup", "IsInInstance", "IsInRaid", "MenuUtil",
   "NotifyInspect", "RAID_CLASS_COLORS", "RANDOM_ROLL_RESULT", "RandomRoll", "RegisterAddonMessagePrefix",
   "SendAddonMessage", "SendChatMessage", "StaticPopup_Show", "TooltipDataProcessor", "UIParent", "UnitClass",
   "UnitIsConnected", "UnitIsGroupAssistant", "UnitGUID", "GetTime", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
   "WOW_PROJECT_ID", "bit", "C_Container", "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
   "ClearCursor", "ClickTradeButton", "GetTradePlayerItemLink", "TradeFrameRecipientNameText", "NUM_BAG_SLOTS",
-  "ERR_TRADE_COMPLETE", "ERR_TRADE_CANCELLED", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
+  "Minimap", "GetCursorPosition", "IsMouseButtonDown", "ERR_TRADE_COMPLETE", "ERR_TRADE_CANCELLED", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G",
 }
 
 files["ToadsLC/adapters"] = { globals = wow, read_globals = wow_read }
