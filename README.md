@@ -222,6 +222,23 @@ Stacks are never put in for you, so a stack of several of the same item has to b
 Soulbound raid drops can only be traded for two hours after they were looted; the game refuses
 the trade after that.
 
+### Greens and blues: the loot mule
+
+With master loot on, the master looter can name one player (a bank alt, an enchanter) who gets
+every green and blue off each corpse, so nobody clicks through the trash drops. When the master
+looter opens a corpse, those items go straight to the mule; anything the council hands out stays
+on the corpse: epics (they go on the loot list) and anything on the priority list, whatever its
+rarity. Quest items are left alone.
+
+- `/tlc mule <name>` (or `/tlc mule target`, `/tlc mule me`) names the mule; `/tlc mule` shows
+  who it is and what they get; `/tlc mule off` stops.
+- `/tlc mule quality green blue` picks the rarities (any of `green`, `blue`, `epic`; green
+  and blue by default).
+
+Master loot only hands out items at or above the group's loot threshold, so with the threshold
+on rare, greens are free for all and can't be muled. If the mule is out of range or wasn't on
+the kill, the items stay on the corpse and the addon says so.
+
 ### Raid chat announcements
 
 So everyone can see where the loot went, two lines go to raid chat by themselves:

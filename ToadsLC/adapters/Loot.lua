@@ -62,7 +62,8 @@ local function party()
   return ns.Store.settings().lootParty == true and not IsInRaid() and IsInGroup()
 end
 
-local function wanted(itemId, quality)
+-- wanted(itemId, quality): this drop is the council's, so it goes on the loot list (and never to the mule)
+function Loot.wanted(itemId, quality)
   if not itemId or Loot.IGNORE[itemId] then return false end
   if Priority.lookup(ns.Store.priorities(), itemId) then return true end
   local least = party() and 3 or (ns.Store.settings().lootQuality or 4) -- dungeon bosses drop blues
@@ -107,7 +108,7 @@ function Loot.onLootOpened()
     local link = GetLootSlotLink(slot)
     local itemId = link and tonumber(link:match("item:(%d+)"))
     local _, name, _, _, quality = GetLootSlotInfo(slot)
-    if itemId and wanted(itemId, quality) then
+    if itemId and Loot.wanted(itemId, quality) then
       local source = sourceOf(slot)
       local base = source .. ":" .. itemId
       counts[base] = (counts[base] or 0) + 1
