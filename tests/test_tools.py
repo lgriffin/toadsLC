@@ -80,6 +80,16 @@ class PackageTest(unittest.TestCase):
         self.assertIn("## Interface '2.5.5' is not a client build number", found)
         self.assertIn("## Version 'v1' is not x.y.z", found)
 
+    def test_refuses_a_symlinked_texture_and_leaves_it_out_of_the_zip(self):
+        d = self.fake_addon("## Interface: 20505\n## Title: T\n## Version: 1.0.0\ncore\\A.lua\n")
+        (d / "Media").mkdir()
+        (d / "Media" / "logo.tga").write_bytes(b"tga")
+        secret = self.tmp / "secret.txt"
+        secret.write_text("runner file")
+        (d / "Media" / "leak.tga").symlink_to(secret)
+        self.assertEqual(["Media/logo.tga"], package.media_files(d))
+        self.assertIn("Media/leak.tga is a symlink; ship the texture itself", package.problems(d))
+
     def test_accepts_several_interface_numbers(self):
         d = self.fake_addon("## Interface: 20505, 20506\n## Title: T\n## Version: 1.2.3\n\ncore\\A.lua\n")
         self.assertEqual([], package.problems(d))
