@@ -26,6 +26,7 @@ adapters\Frames.lua
 adapters\Sim.lua
 adapters\Loot.lua
 adapters\Trade.lua
+adapters\Version.lua
 adapters\Commands.lua
 
 Init.lua

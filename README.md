@@ -99,6 +99,10 @@ scale are kept per character.
    mistake, `/tlc import undo` puts the previous list back.
 4. Set the raid password (below): the leader types `/tlc begin <password>`, each officer
    `/tlc join <password>`.
+5. Once the raid has formed, `/tlc version` checks who has the addon. After about five
+   seconds it lists how many have Toads LC, who is on an older version, who didn't answer
+   (no addon, or a version from before this check existed) and who is offline. Raiders on an
+   older version also get a line telling them a newer one is out.
 
 Raiders don't need to import anything; the tooltip only shows on clients that have the list,
 but the loot window works for everyone.
@@ -309,6 +313,7 @@ To test the real thing with five players in a dungeon, follow
 | Command | Who | What it does |
 | --- | --- | --- |
 | `/tlc help` | anyone | list the commands |
+| `/tlc version` | anyone | ask the group which Toads LC version each member has; lists newest, older, no answer and offline |
 | `/tlc status` | anyone | imported list and its date, sessions waiting for export, raid password fingerprint |
 | `/tlc tooltip on` / `off` | anyone | show or hide the Priority block on tooltips |
 | `/tlc debug [item]` | anyone | client build, tooltip hooks, the list, and why the last item you hovered did or didn't get a Priority block |

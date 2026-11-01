@@ -29,6 +29,7 @@ local HELP = {
   "/tlc sim [boss | raid | item] [seconds]  practice solo or in a party: fake a boss kill and a raid answering it",
   "/tlc sim drop [boss | raid | item]  fake a kill whose drops only go on the loot list",
   "/tlc sim stop  stop the simulation and clear its sessions",
+  "/tlc version  who in the group has Toads LC, and whether it's the newest version",
   "/tlc status | /tlc history | /tlc tooltip on|off",
   "/tlc scale <0.5-2> | reset  make every Toads LC window bigger or smaller; reset puts them back",
   "  (drag a window's bottom-right corner to resize it; sizes and places are kept per character)",
@@ -201,6 +202,9 @@ end
 function handlers.begin(rest) ns.App.beginRaid(rest) end
 function handlers.join(rest) ns.App.joinRaid(rest) end
 handlers["end"] = function() ns.App.endRaid() end
+
+function handlers.version() ns.Version.check() end
+handlers.versions = handlers.version
 
 function handlers.status() ns.App.status() end
 function handlers.history() ns.App.history() end

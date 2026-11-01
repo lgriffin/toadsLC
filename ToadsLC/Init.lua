@@ -441,6 +441,7 @@ local function start()
   })
   Comms.init(function(msg, sender, trusted, signed)
     if ns.Loot.handles(msg.t) then ns.Loot.handle(msg, sender, trusted, signed); return end
+    if ns.Version.handles(msg.t) then ns.Version.handle(msg, sender); return end
     send(App.registry:handle(msg, sender, trusted, signed))
   end,
     function(sender) App.registry:notice("sealed", sender) end)
