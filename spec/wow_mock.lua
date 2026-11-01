@@ -80,7 +80,7 @@ local function setup(C, G, opts)
   end
   G.CreateFrame = function(kind, name) local w = newWidget(C, kind, name); if name then G[name] = w end; return w end
   G.GetServerTime = function() return C.time end
-  G.GetAddOnMetadata = function() return "0.1.0" end
+  G.GetAddOnMetadata = function() return opts.version or "0.1.0" end
   G.C_ChatInfo = {
     RegisterAddonMessagePrefix = function() return true end,
     SendAddonMessage = function(prefix, text, dist, target)
@@ -91,7 +91,7 @@ local function setup(C, G, opts)
     NewTicker = function(_, fn) table.insert(C.timers, fn) end,
     After = function(_, fn) table.insert(C.later, fn) end,
   }
-  G.SendChatMessage = function(text, ch) table.insert(C.chat, { text = text, channel = ch }) end
+  G.SendChatMessage = function(text, ch, _, target) table.insert(C.chat, { text = text, channel = ch, target = target }) end
   G.RandomRoll = function(a, b) table.insert(C.rolls, { a, b }) end
   G.IsInRaid = function() return true end
   G.IsInGroup = function() return true end
@@ -111,6 +111,7 @@ local function setup(C, G, opts)
     local m = member(unit); return m and m.name
   end
   G.UnitClass = function(unit) local m = member(unit); return m and m.class, m and m.class end
+  G.UnitIsConnected = function(unit) local m = member(unit); return m ~= nil and not m.offline end
   G.UnitIsUnit = function(a, b) local x, y = member(a), member(b); return x ~= nil and x == y end
   G.UnitIsGroupLeader = function(unit) local m = member(unit); return m and m.leader or false end
   G.UnitIsGroupAssistant = function(unit) local m = member(unit); return m and m.assist or false end
@@ -133,7 +134,26 @@ local function setup(C, G, opts)
     local l = C.corpse[i]
     return l and string.format("|cffa335ee|Hitem:%d::::::::70:::::|h[%s]|h|r", l[1], l[2])
   end
-  G.GetLootSlotInfo = function(i) local l = C.corpse[i]; return "icon", l and l[2], 1, nil, l and l[3] end
+  G.GetLootSlotInfo = function(i) local l = C.corpse[i]; return "icon", l and l[2], 1, nil, l and l[3], false, l and l.quest or false end
+  G.GetLootSlotType = function(i) return C.corpse[i] and 1 or 0 end
+  G.LOOT_SLOT_ITEM = 1
+  -- master loot: C.lootMethod ("master" makes the player master looter), C.lootThreshold,
+  -- C.candidates (names eligible for every slot; the whole group by default), C.given[slot] = name
+  C.lootMethod, C.lootThreshold, C.given = opts.lootMethod or "group", opts.lootThreshold or 2, {}
+  C.candidates = opts.candidates
+  G.GetLootMethod = function()
+    if C.lootMethod ~= "master" then return C.lootMethod end
+    for i, m in ipairs(C.group) do if m.name == C.me then return "master", 0, i end end
+  end
+  G.GetLootThreshold = function() return C.lootThreshold end
+  G.GetMasterLootCandidate = function(_, i)
+    if C.candidates then return C.candidates[i] end
+    return C.group[i] and C.group[i].name
+  end
+  G.GiveMasterLoot = function(slot, i)
+    local who = G.GetMasterLootCandidate(slot, i)
+    if who and C.corpse[slot] then C.given[slot] = who end
+  end
   G.GetLootSourceInfo = function(i) local l = C.corpse[i]; return l and l[4], 1 end
   G.GetBuildInfo = function() return "2.5.5", "65000", "Oct 1 2026", 20505 end
   G.GetItemIcon = function() return "icon" end

@@ -49,13 +49,15 @@ describe("a raid of clients", function()
       assert.is_true(c.env.ToadsLCCandidateFrame:IsShown())
     end
     local cand = rogue.env.ToadsLCCandidateFrame
-    assert.are.same({ "MS", "OS (99)", "Pass" }, { cand.rows[1].main:GetText(), cand.rows[1].off:GetText(), cand.rows[1].pass:GetText() })
+    local row = cand.rows[1]
+    assert.are.same({ "BiS", "Upgrade", "OffSpec", "Pass" },
+                    { row.bis:GetText(), row.up:GetText(), row.off:GetText(), row.pass:GetText() })
     assert.is_true(officer.env.ToadsLCCouncilFrame:IsShown())
     assert.is_falsy(hunter.env.ToadsLCCouncilFrame and hunter.env.ToadsLCCouncilFrame:IsShown())
 
     rogue.ns.App.respond(s.id, "main", "BiS for me")
     warrior.ns.App.respond(s.id, "main")
-    assert.are.same({ 1, 100 }, rogue.rolls[1]) -- the MS button rolls for real
+    assert.are.same({ 1, 100 }, rogue.rolls[1]) -- the Upgrade button rolls for real
     W.deliver(all)
     rollOnLeader("Anasazi rolls 41 (1-100)")
     rollOnLeader("Gally rolls 97 (1-100)")
@@ -80,7 +82,8 @@ describe("a raid of clients", function()
       assert.are.equal("done", latest(c).phase, c.me)
       assert.are.equal("Anasazi", latest(c).awardedTo, c.me)
     end
-    assert.matches("Anasazi", leader.chat[#leader.chat].text)
+    assert.matches("Anasazi", leader.chat[#leader.chat - 1].text)
+    assert.are.equal("Anasazi", leader.chat[#leader.chat].target) -- and the winner is whispered
     assert.are.equal(1, #leader.ns.Store.records(false)) -- only the leader keeps the record
     assert.are.equal(0, #officer.ns.Store.records(false))
   end)

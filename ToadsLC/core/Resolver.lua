@@ -1,5 +1,5 @@
--- Resolver: a sort, not a vote. Candidates are ordered main spec first, then tier
--- ascending, then roll descending; the first row is what the list says.
+-- Resolver: a sort, not a vote. Candidates are ordered main spec first, then tier ascending,
+-- then BiS above Upgrade, then roll descending; the first row is what the list says.
 local _, ns = ...
 ns = ns or {}
 
@@ -31,6 +31,7 @@ local function byPriority(a, b)
   if a.offspec ~= b.offspec then return not a.offspec end -- main spec first, always
   local ta, tb = a.tier or huge, b.tier or huge
   if ta ~= tb then return ta < tb end
+  if a.bis ~= b.bis then return a.bis end -- BiS above Upgrade within a tier
   if a.roll ~= b.roll then return a.roll > b.roll end
   return nameLess(a, b)
 end
@@ -42,8 +43,9 @@ local function byRoll(a, b)
 end
 
 -- resolve(item, entries, rules) -> result
--- entries: { player, class, spec, roll, max [, ignored] }; max 100 = main spec,
--- rules.offspecRollMax (99) = off-spec. Ignored entries and entries without a roll are skipped.
+-- entries: { player, class, spec, response, roll, max [, ignored] }; max 100 = main spec
+-- (BiS when response is "bis", Upgrade otherwise), rules.offspecRollMax (99) = off-spec.
+-- Ignored entries and entries without a roll are skipped.
 -- result: { ranked, winner, by, allOffspec, highestRoll, tie }
 --   by is "priority", "highest-roll" or "none" (nobody rolled).
 --   In allOffspecMode "ask" with only off-spec rolls, winner is nil and the LC picks
@@ -54,6 +56,7 @@ function Resolver.resolve(item, entries, rules)
   for _, e in ipairs(entries) do
     if not e.ignored and e.roll then
       e.offspec = (e.max == rules.offspecRollMax)
+      e.bis = not e.offspec and e.response == "bis"
       e.tier = Priority.tierOf(item, e)
       live[#live + 1] = e
     end
@@ -74,9 +77,9 @@ function Resolver.resolve(item, entries, rules)
     if rules.allOffspecMode == "highest" then result.winner, result.by = copy[1], "highest-roll" end
     if rules.allOffspecMode == "ask" then result.winner = nil end -- window shows both, LC picks
   end
-  -- A tie is on whatever decided the winner: tier and roll by priority, the roll alone
+  -- A tie is on whatever decided the winner: tier, BiS and roll by priority, the roll alone
   -- when the highest roll decides.
-  local order, sameRank = live, function(x, y) return x.offspec == y.offspec and x.tier == y.tier and x.roll == y.roll end
+  local order, sameRank = live, function(x, y) return x.offspec == y.offspec and x.bis == y.bis and x.tier == y.tier and x.roll == y.roll end
   if result.by == "highest-roll" then
     order = { unpack(live) }
     table.sort(order, byRoll)
