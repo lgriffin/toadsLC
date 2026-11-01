@@ -146,7 +146,10 @@ local function finish()
   r.at = p.at
   Version.last = r
   for _, line in ipairs(Version.lines(r, mine())) do ns.Chat.print(line) end
-  for _, fn in ipairs(p.callbacks) do pcall(fn, r) end
+  for _, fn in ipairs(p.callbacks) do
+    local ok, err = pcall(fn, r)
+    if not ok then ns.Chat.debug("version check callback failed: " .. tostring(err)) end
+  end
 end
 
 -- check([onDone(report)]) -> true when a check started (or one already running takes onDone).
@@ -171,9 +174,11 @@ end
 
 function Version.handles(t) return t == "VERSION_PING" or t == "VERSION" end
 
--- handle(msg, sender): trust does not matter here, a version is not a secret
+-- handle(msg, sender): trust does not matter here, a version is not a secret, but only
+-- group members are answered or believed about a newer version
 function Version.handle(m, sender)
   if type(m.id) ~= "string" or #m.id > 32 then return end
+  if not ns.Roster.unitOf(sender) then return end
   if m.t == "VERSION_PING" then
     noteNewer(m.v, sender)
     local key, t = Priority.nameKey(sender), now()
@@ -181,9 +186,9 @@ function Version.handle(m, sender)
     answered[key] = t
     send({ { msg = { t = "VERSION", id = m.id, v = mine() }, dist = "WHISPER", target = sender } })
   elseif m.t == "VERSION" then
-    if not valid(m.v) then return end
+    if not valid(m.v) or not pending or m.id ~= pending.id then return end
     noteNewer(m.v, sender)
-    if pending and m.id == pending.id then pending.replies[Priority.nameKey(sender)] = m.v end
+    pending.replies[Priority.nameKey(sender)] = m.v
   end
 end
 

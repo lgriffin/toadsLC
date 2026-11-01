@@ -105,6 +105,20 @@ describe("/tlc version in a raid", function()
     assert.matches("4 of 6", printed(leader), 1, true)
   end)
 
+  it("ignores a ping from someone outside the group", function()
+    local ping = rogue.ns.Codec.wireChunks({ t = "VERSION_PING", id = "x1", v = "9.9.9" }, "1")[1]
+    rogue:fire("CHAT_MSG_ADDON", "ToadsLC", ping, "WHISPER", "Stranger")
+    assert.are.equal("", printed(rogue))
+    rogue:fire("CHAT_MSG_ADDON", "ToadsLC", ping, "WHISPER", "Hadur") -- the same from a raid member is heard
+    assert.matches("A newer Toads LC is out", printed(rogue), 1, true)
+    rogue:flushComms()
+    rogue.printed, rogue.addon = {}, {}
+    rogue:fire("CHAT_MSG_ADDON", "ToadsLC", ping, "WHISPER", "Stranger")
+    assert.are.equal("", printed(rogue))
+    rogue:flushComms()
+    assert.are.same({}, rogue.addon)
+  end)
+
   it("says so when the player is behind", function()
     rogue:slash("version")
     W.deliver(all)
