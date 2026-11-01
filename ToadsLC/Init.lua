@@ -447,6 +447,7 @@ local function start()
   ns.Tooltip.init()
   ns.Commands.init()
   ns.Loot.init()
+  ns.Mule.init()
   ns.Trade.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
     local s = App.registry:restore(row.state, row.at)
