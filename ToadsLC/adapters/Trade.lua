@@ -113,6 +113,12 @@ local function find(itemId, used)
   end
 end
 
+-- held(itemId) -> true when a copy is in this player's bags, ready to trade
+function Trade.held(itemId) return itemId ~= nil and find(itemId, {}) ~= nil end
+
+-- traded(sessionId) -> true once that award was handed over
+function Trade.traded(id) return id ~= nil and tradedSet()[id] ~= nil end
+
 -- freeSlots() -> the trade slots nothing is in yet
 local function freeSlots()
   local out = {}

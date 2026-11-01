@@ -3,7 +3,7 @@
 Loot council for the Toads raid on Spineshatter EU (TBC Classic).
 
 Toads LC puts the guild's agreed class priorities on item tooltips and hands out loot **by
-priority tier first, roll second**. Raiders answer each drop with MS (main spec), OS (off-spec) or Pass;
+priority tier first, roll second**. Raiders answer each drop with BiS, Upgrade, OffSpec or Pass;
 officers see everyone ranked in a council frame and vote; the raid leader awards. Every roll,
 vote and award is kept, and exported after the raid for the Toads site.
 
@@ -11,6 +11,7 @@ This guide is for players and officers. If you want to change the addon itself, 
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 - [Install](#install)
+- [The Toads LC window](#the-toads-lc-window)
 - [What raiders do](#what-raiders-do)
 - [Raid night for the leader and officers](#raid-night-for-the-leader-and-officers)
 - [The raid password](#the-raid-password)
@@ -43,7 +44,8 @@ This guide is for players and officers. If you want to change the addon itself, 
    ```
 
 5. Start the game. On the character screen, open **AddOns** and make sure **Toads LC** is
-   ticked. In game, `/tlc help` lists the commands.
+   ticked. In game, type `/tlc` (or click the minimap button) to open the Toads LC window;
+   `/tlc help` lists the slash commands.
 
 Do not use GitHub's green **Code > Download ZIP** button: that zip is the developer source,
 and its folder is named `toadsLC-main`, which the game will not load. Use the release zip.
@@ -54,6 +56,30 @@ SavedVariables, not in the addon folder).
 
 Toads LC runs alongside Gargul, RCLootCouncil and other loot addons; each adds its own
 tooltip lines. It only loads on the TBC Classic client.
+
+## The Toads LC window
+
+`/tlc` on its own, or the minimap button, opens one window with its pages down the left side.
+Everything the slash commands do has a button there; the commands still work as shortcuts.
+
+- **Raider** (everyone): **Rolls** lists tonight's loot, where each item is, and what you
+  answered. When an item is announced the answer window pops up as before.
+- **Loot council** (locked): the council pages stay hidden until this character has tonight's
+  raid password. On the **Unlock** page the raid leader types a password and presses
+  **Begin raid**; officers type the same one and press **Join as officer** (the same as
+  `/tlc begin` and `/tlc join`). **Lock** at the bottom of the side bar hides them again; type
+  the password to unlock.
+  - **Loot**, the main page: every item tonight with its boss, when it dropped, the two hours
+    it can be traded counting down, and its status (waiting to announce, awaiting rolls,
+    missing votes, awarded). **Announce** on a row opens that item; **Announce all** opens
+    every waiting item at once so the whole raid has time to answer and vote. Click an item
+    to see each raider's answer, roll and tier, who on the council has voted and who still has
+    to, and to vote (click a raider), award, re-roll, undo or remove it.
+  - **Trades**, **Raid & council** (password fingerprint, council, items by hand, the last item
+    you led), **Raid chat lines** (award and trade wording), **Import / export** and
+    **History**.
+- **Practice** (`/tlc sim`) and **Settings**: tooltip priorities, the minimap button, lock
+  window positions, an opacity slider and a size slider for every Toads LC window.
 
 ## What raiders do
 
@@ -69,12 +95,15 @@ to do anything beyond answering loot.
   it does. When the leader opens
   the whole loot pool at once, the window has a row per item: answer each one. Type an
   optional note for the council (it goes with your next answer), then press:
-  - **MS** (main spec): rolls 1-100 for you.
-  - **OS (99)** (off-spec): rolls 1-99 for you.
+  - **BiS** (main spec, best in slot): rolls 1-100 for you, and the council sees you flagged BiS,
+    ranked above Upgrade rolls in your priority tier.
+  - **Upgrade** (main spec): rolls 1-100 for you.
+  - **OffSpec**: rolls 1-99 for you.
   - **Pass**: you are out for this item.
-- **No addon, or you closed the window?** Just `/roll` for main spec or `/roll 99` for
-  off-spec while the countdown runs. The leader's addon reads the roll from chat. This only works
-  while a single item is open: with several open at once, answer in the window.
+- **No addon, or you closed the window?** Just `/roll` for Upgrade or `/roll 99` for
+  OffSpec while the countdown runs. The leader's addon reads the roll from chat. This only works
+  while a single item is open: with several open at once, answer in the window. BiS can
+  only be claimed with the button.
 - **For a plain roll** (`/tlc roll`, used for less contested items) there is no window: the
   leader announces the item in raid chat, you `/roll` or `/roll 99`, and the result is posted
   when the timer ends.
@@ -138,7 +167,7 @@ start until it closes. An item nobody was awarded can be started again.
 
 **The whole pool at once.** **Start all** (or `/tlc loot all`) opens a council session for every
 waiting item together and posts one raid warning plus the numbered list, instead of a line per
-item. Raiders get one loot window with a row per item and MS / OS / Pass on each; answered
+item. Raiders get one loot window with a row per item and BiS / Upgrade / OffSpec / Pass on each; answered
 items drop off the window. The window stays open 60 seconds plus 15 per item (up to 10
 minutes). Each button press also rolls, and the leader's addon matches a raider's rolls to the
 items they pressed, in order. A bare `/roll` doesn't count while several items are open (it
@@ -195,6 +224,23 @@ When an item is awarded and it's in your bags, the addon reminds you who to trad
 Stacks are never put in for you, so a stack of several of the same item has to be split first.
 Soulbound raid drops can only be traded for two hours after they were looted; the game refuses
 the trade after that.
+
+### Greens and blues: the loot mule
+
+With master loot on, the master looter can name one player (a bank alt, an enchanter) who gets
+every green and blue off each corpse, so nobody clicks through the trash drops. When the master
+looter opens a corpse, those items go straight to the mule; anything the council hands out stays
+on the corpse: epics (they go on the loot list) and anything on the priority list, whatever its
+rarity. Quest items are left alone.
+
+- `/tlc mule <name>` (or `/tlc mule target`, `/tlc mule me`) names the mule; `/tlc mule` shows
+  who it is and what they get; `/tlc mule off` stops.
+- `/tlc mule quality green blue` picks the rarities (any of `green`, `blue`, `epic`; green
+  and blue by default).
+
+Master loot only hands out items at or above the group's loot threshold, so with the threshold
+on rare, greens are free for all and can't be muled. If the mule is out of range or wasn't on
+the kill, the items stay on the corpse and the addon says so.
 
 ### Raid chat announcements and the winner's whisper
 
@@ -287,7 +333,7 @@ You answer in the loot window and run the council frame, `/tlc award`, `/tlc rer
 
 Items on your imported list use its priorities; anything else gets a made-up priority over
 the fake raid. Simulated loot never reaches group chat, the export or `/tlc history`. In a
-party, the others see the windows and their MS / OS buttons roll for real. It
+party, the others see the windows and their BiS / Upgrade / OffSpec buttons roll for real. It
 won't run in a raid group or while a real session is taking rolls, and opening a real session
 stops it.
 
@@ -297,9 +343,13 @@ To test the real thing with five players in a dungeon, follow
 ## How the winner is decided
 
 - A main-spec roll (1-100) always beats an off-spec roll (1-99).
-- Among main-spec rolls: **lower tier first, then higher roll.** A tier 1 rogue rolling 41
-  beats a tier 2 warrior rolling 97.
-- Among off-spec rolls, or for an item that isn't on the list: highest roll.
+- Among main-spec rolls: **lower tier first, then BiS over Upgrade, then higher roll.** A tier 1
+  rogue rolling 41 beats a tier 2 warrior rolling 97, even if the warrior pressed BiS; two
+  tier 2 warriors, one BiS and one Upgrade, go to the BiS one whatever they rolled.
+- A plain `/roll` counts as Upgrade. BiS rows show an orange **BiS** in the council frame's
+  Response column, and raid chat flags them: `Gally wins (BiS, Fury, tier 2, rolled 12)`.
+- Among off-spec rolls, or for an item that isn't on the list: highest roll (BiS still above
+  Upgrade).
 - When every roll is off-spec, the council frame offers both the priority pick and the
   highest roll and awards neither until the council chooses (the site can switch this to
   always-priority or always-highest).

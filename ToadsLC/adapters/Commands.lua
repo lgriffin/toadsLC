@@ -5,6 +5,7 @@ local Commands = {}
 ns.Commands = Commands
 
 local HELP = {
+  "/tlc  open the Toads LC window: every command below has a button there (or click the minimap button)",
   "/tlc begin <password>  raid leader: protect council traffic with a password for tonight",
   "/tlc join <password>  officer: join the raid's protected council traffic",
   "/tlc end  forget the raid password",
@@ -16,6 +17,8 @@ local HELP = {
   "/tlc loot roll <n> [seconds]  plain priority roll for item n",
   "/tlc loot announce | list | add <item> | remove <n> | clear | auto on|off",
   "/tlc loot party on|off  practise in a 5-man: record party drops too (rare and up) when you lead",
+  "/tlc mule <name> | target | off  master looter: greens and blues go straight to one player",
+  "/tlc mule quality green blue epic  which rarities the mule gets (council items never go to the mule)",
   "/tlc trade  what is still to trade to the winners; a trade with one puts their items in by itself",
   "/tlc trade done <name> | on | off  mark a winner's items handed over; turn the trade filling on or off",
   "/tlc announce  the award and trade lines and the winner's whisper; /tlc announce award|trade|whisper on | off | reset | <text>",
@@ -102,6 +105,8 @@ function handlers.loot(rest)
   end
 end
 
+function handlers.mule(rest) ns.Mule.command(rest) end
+
 function handlers.trade(rest)
   local sub, arg = words(rest)
   if sub == "" or sub == "list" then
@@ -132,6 +137,8 @@ local function sample(which, text)
                    response = "BiS", spec = "Rogue", tier = 1, roll = 87, by = ns.Roster.me() }
   return S.fill(text or S[ANNOUNCE[which].default], fields)
 end
+
+Commands.ANNOUNCE, Commands.sample = ANNOUNCE, sample
 
 local function showAnnounce()
   local set, S = ns.Store.settings(), ns.Session
@@ -236,12 +243,17 @@ end
 function handlers.help()
   for _, line in ipairs(HELP) do ns.Chat.print(line) end
 end
+Commands.help = handlers.help
+
+function handlers.show() ns.Main.toggle() end
+handlers.menu, handlers.lc = handlers.show, handlers.show
 
 function Commands.init()
   SLASH_TOADSLC1 = "/tlc"
   SLASH_TOADSLC2 = "/toadslc"
   SlashCmdList.TOADSLC = function(msg)
     local cmd, rest = words(msg or "")
+    if cmd == "" then ns.Main.toggle(); return end
     local fn = handlers[cmd] or handlers.help
     fn(rest)
   end

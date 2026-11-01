@@ -63,7 +63,7 @@ describe("addon in a fake client", function()
   it("runs /tlc roll from open to award and writes the record", function()
     W.ns.App.import(sample)
     W.slash("roll |cffa335ee|Hitem:28830::::::::70:::::|h[Dragonspine Trophy]|h|r 30")
-    assert.matches("^RAID: %[ToadsLC%] Roll: .*Dragonspine Trophy.*%(30 s%)%. /roll MS, /roll 99 OS%. Priority: BM Hunter = Rogue > Fury", W.chatText())
+    assert.matches("^RAID: %[ToadsLC%] Roll: .*Dragonspine Trophy.*%(30 s%)%. /roll Upgrade, /roll 99 OffSpec%. Priority: BM Hunter = Rogue > Fury", W.chatText())
     W.fire("CHAT_MSG_SYSTEM", "Anasazi rolls 41 (1-100)")
     W.fire("CHAT_MSG_SYSTEM", "Gally rolls 97 (1-100)")
     W.fire("CHAT_MSG_SYSTEM", "Hadur rolls 88 (1-100)")
@@ -71,7 +71,7 @@ describe("addon in a fake client", function()
     W.fire("CHAT_MSG_SYSTEM", "Gally rolls 12 (1-100)")
     W.tick(31)
     local last = W.chat[#W.chat].text
-    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (off-spec).", last)
+    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (OffSpec).", last)
     W.slash("award")
     assert.are.equal("RAID_WARNING", W.chat[#W.chat - 1].channel)
     assert.are.same({ "WHISPER", "Anasazi" }, { W.chat[#W.chat].channel, W.chat[#W.chat].target })
@@ -322,10 +322,10 @@ describe("/tlc sim", function()
     W.ns.App.import(H.read("fixtures/priority.sample.json"))
     W.slash("sim [Dragonspine Trophy] 20")
     local row = _G.ToadsLCCandidateFrame.rows[1]
-    assert.matches("^|cff4ce566", row.timer:GetText()) -- plenty of time: green
+    assert.matches("^|cff3fd6c8", row.timer:GetText()) -- plenty of time: the site's teal
     W.tick(16)
     W.ns.Frames.refreshCandidate()
-    assert.matches("^|cffff4c4c4 s", row.timer:GetText()) -- last 5 seconds: red
+    assert.matches("^|cffe06a5f4 s", row.timer:GetText()) -- last 5 seconds: red
     W.ns.Frames.showCouncil()
     local council = _G.ToadsLCCouncilFrame
     assert.matches("Answers open", council.status:GetText())

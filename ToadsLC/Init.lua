@@ -164,7 +164,7 @@ function App.respond(id, response, note)
   local s = App.registry:get(id)
   if not s then return end
   send(App.registry:respond(id, response, note, Roster.specOf("player")))
-  if response == "main" then RandomRoll(1, 100)
+  if response == "bis" or response == "main" then RandomRoll(1, 100)
   elseif response == "offspec" then RandomRoll(1, s.rules.offspecRollMax) end
 end
 
@@ -222,6 +222,8 @@ function App.rerollLast()
   local s = lastLed(function(x) return x.phase == "voting" end)
   if s then App.reroll(s.id) else Chat.print("Nothing to re-roll.") end
 end
+
+function App.unaward(id) send(App.registry:unaward(id)) end
 
 function App.undoLast()
   local s = lastLed(function(x) return x.phase == "done" end)
@@ -339,9 +341,11 @@ function App.debug(itemText)
   end
 end
 
+-- tonight() -> the session records saved tonight (the history page, /tlc history)
+function App.tonight() return Store.since(loginTime - 6 * 3600) end
+
 function App.history()
-  local since = loginTime - 6 * 3600
-  local recs = Store.since(since)
+  local recs = App.tonight()
   if #recs == 0 then Chat.print("No awards tonight."); return end
   for _, r in ipairs(recs) do
     local to = r.awardedTo ~= Codec.null and r.awardedTo or "not awarded"
@@ -458,7 +462,9 @@ local function start()
     function(sender) App.registry:notice("sealed", sender) end)
   ns.Tooltip.init()
   ns.Commands.init()
+  ns.Main.init()
   ns.Loot.init()
+  ns.Mule.init()
   ns.Trade.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
     local s = App.registry:restore(row.state, row.at)

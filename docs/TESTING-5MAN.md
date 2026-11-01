@@ -15,7 +15,7 @@ party to a raid instead doesn't help: TBC keeps raid groups out of 5-man dungeon
 | --- | --- | --- |
 | **Leader** | party lead, the priority list imported | records the loot, starts items, awards, trades the winners |
 | **Officer** | the priority list imported, named on its council | votes in the council frame |
-| **Raider 1, 2** | the addon | answers with MS / OS / Pass |
+| **Raider 1, 2** | the addon | answers with BiS / Upgrade / OffSpec / Pass |
 | **Raider 3** (optional) | no addon, or the addon turned off | answers with `/roll` and `/roll 99` |
 
 Write down which item went to whom as you go; you check the trades against it at the end.
@@ -63,11 +63,11 @@ you can carry on and report it.
 
 9. **Leader:** `/tlc loot 1` (or **Session** on row 1). Party chat announces it with a
    countdown; the row says *rolling*.
-10. **Raiders 1 and 2:** the loot window pops up. One presses **MS**, the other **OS (99)**,
+10. **Raiders 1 and 2:** the loot window pops up. One presses **BiS**, the other **OffSpec**,
     and one of them adds a note. Each button press rolls for you.
 11. **Raider 3** (no addon): types `/roll` in party chat before the countdown ends.
-12. **Officer:** the council frame lists all three. Check the MS roll is ranked above the
-    OS roll, then left-click a row to vote.
+12. **Officer:** the council frame lists all three. Check the BiS roll is ranked above the
+    OffSpec roll, then left-click a row to vote.
 13. **Leader:** when the countdown ends, award (the vote leader, or **list says**). Party
     chat names the winner; on `/tlc loot` the row says *to Name*.
 14. **Leader:** `/tlc undo`, then award to someone else with a reason, to check undo and
@@ -82,8 +82,8 @@ things from your bags.
 
 16. **Leader:** **Start all** on the loot list (or `/tlc loot all 120`). Party chat gets one
     warning and the numbered list; every waiting row says *rolling*.
-17. **Raiders 1 and 2:** one loot window, a row per item. Answer each row differently (MS on
-    one, OS on another, Pass on a third). Answered rows drop off; the window closes once
+17. **Raiders 1 and 2:** one loot window, a row per item. Answer each row differently (BiS on
+    one, OffSpec on another, Pass on a third). Answered rows drop off; the window closes once
     everything is answered or the time runs out.
 18. **Raider 3** (no addon): type `/roll` once. It should **not** count for any item while
     several are open (it can't tell which one it's for). Check the council frame.

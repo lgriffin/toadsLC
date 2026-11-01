@@ -132,7 +132,26 @@ local function setup(C, G, opts)
     local l = C.corpse[i]
     return l and string.format("|cffa335ee|Hitem:%d::::::::70:::::|h[%s]|h|r", l[1], l[2])
   end
-  G.GetLootSlotInfo = function(i) local l = C.corpse[i]; return "icon", l and l[2], 1, nil, l and l[3] end
+  G.GetLootSlotInfo = function(i) local l = C.corpse[i]; return "icon", l and l[2], 1, nil, l and l[3], false, l and l.quest or false end
+  G.GetLootSlotType = function(i) return C.corpse[i] and 1 or 0 end
+  G.LOOT_SLOT_ITEM = 1
+  -- master loot: C.lootMethod ("master" makes the player master looter), C.lootThreshold,
+  -- C.candidates (names eligible for every slot; the whole group by default), C.given[slot] = name
+  C.lootMethod, C.lootThreshold, C.given = opts.lootMethod or "group", opts.lootThreshold or 2, {}
+  C.candidates = opts.candidates
+  G.GetLootMethod = function()
+    if C.lootMethod ~= "master" then return C.lootMethod end
+    for i, m in ipairs(C.group) do if m.name == C.me then return "master", 0, i end end
+  end
+  G.GetLootThreshold = function() return C.lootThreshold end
+  G.GetMasterLootCandidate = function(_, i)
+    if C.candidates then return C.candidates[i] end
+    return C.group[i] and C.group[i].name
+  end
+  G.GiveMasterLoot = function(slot, i)
+    local who = G.GetMasterLootCandidate(slot, i)
+    if who and C.corpse[slot] then C.given[slot] = who end
+  end
   G.GetLootSourceInfo = function(i) local l = C.corpse[i]; return l and l[4], 1 end
   G.GetBuildInfo = function() return "2.5.5", "65000", "Oct 1 2026", 20505 end
   G.GetItemIcon = function() return "icon" end

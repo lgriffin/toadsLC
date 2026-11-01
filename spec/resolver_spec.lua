@@ -25,6 +25,44 @@ describe("Resolver", function()
     assert.is_true(r.ranked[2].offspec)
   end)
 
+  it("tier still comes first: Anasazi's tier 1 Upgrade 12 beats Gally's tier 2 BiS 97", function()
+    local gally = e("Gally", "Warrior", "Warrior:Fury", 97)
+    gally.response = "bis"
+    local anasazi = e("Anasazi", "Rogue", "Rogue:Combat", 12)
+    anasazi.response = "main"
+    local r = R.resolve(item, { gally, anasazi }, rules)
+    assert.are.equal("Anasazi", r.winner.player)
+    assert.is_false(r.ranked[1].bis)
+    assert.is_true(r.ranked[2].bis)
+  end)
+
+  it("within a tier BiS beats Upgrade: Gally's BiS 3 beats Grom's Upgrade 99", function()
+    local bis = e("Gally", "Warrior", "Warrior:Fury", 3)
+    bis.response = "bis"
+    local up = e("Grom", "Warrior", "Warrior:Fury", 99)
+    up.response = "main"
+    local r = R.resolve(item, { up, bis }, rules)
+    assert.are.equal("Gally", r.winner.player)
+    assert.are.equal(r.ranked[1].tier, r.ranked[2].tier)
+    assert.is_false(r.tie)
+  end)
+
+  it("puts BiS above Upgrade on an item that isn't on the list too", function()
+    local low = e("Gally", "Warrior", "Warrior:Fury", 1)
+    low.response = "bis"
+    local r = R.resolve({ priority = {} }, { e("Anasazi", "Rogue", "Rogue:Combat", 100), low }, rules)
+    assert.are.equal("Gally", r.winner.player)
+    assert.is_false(r.tie)
+  end)
+
+  it("ranks two BiS rolls by tier then roll, and never lifts an off-spec roll", function()
+    local function bis(...) local x = e(...); x.response = "bis"; return x end
+    local r = R.resolve(item, { bis("Gally", "Warrior", "Warrior:Fury", 99), bis("Anasazi", "Rogue", "Rogue:Combat", 3),
+                                bis("Poohtank", "Paladin", "Paladin:Protection", 98, 99) }, rules)
+    assert.are.same({ "Anasazi", "Gally", "Poohtank" }, { r.ranked[1].player, r.ranked[2].player, r.ranked[3].player })
+    assert.is_false(r.ranked[3].bis)
+  end)
+
   it("When every response is off-spec, shows two list-says rows and awards neither", function()
     local r = R.resolve(item, { e("Poohtank", "Paladin", "Paladin:Protection", 94, 99), e("Gally", "Warrior", "Warrior:Fury", 12, 99) }, rules)
     assert.is_true(r.allOffspec)
