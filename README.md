@@ -11,6 +11,7 @@ This guide is for players and officers. If you want to change the addon itself, 
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 - [Install](#install)
+- [The Toads LC window](#the-toads-lc-window)
 - [What raiders do](#what-raiders-do)
 - [Raid night for the leader and officers](#raid-night-for-the-leader-and-officers)
 - [The raid password](#the-raid-password)
@@ -43,7 +44,8 @@ This guide is for players and officers. If you want to change the addon itself, 
    ```
 
 5. Start the game. On the character screen, open **AddOns** and make sure **Toads LC** is
-   ticked. In game, `/tlc help` lists the commands.
+   ticked. In game, type `/tlc` (or click the minimap button) to open the Toads LC window;
+   `/tlc help` lists the slash commands.
 
 Do not use GitHub's green **Code > Download ZIP** button: that zip is the developer source,
 and its folder is named `toadsLC-main`, which the game will not load. Use the release zip.
@@ -55,6 +57,30 @@ SavedVariables, not in the addon folder).
 Toads LC runs alongside Gargul, RCLootCouncil and other loot addons; each adds its own
 tooltip lines. It only loads on the TBC Classic client.
 
+## The Toads LC window
+
+`/tlc` on its own, or the minimap button, opens one window with its pages down the left side.
+Everything the slash commands do has a button there; the commands still work as shortcuts.
+
+- **Raider** (everyone): **Rolls** lists tonight's loot, where each item is, and what you
+  answered. When an item is announced the answer window pops up as before.
+- **Loot council** (locked): the council pages stay hidden until this character has tonight's
+  raid password. On the **Unlock** page the raid leader types a password and presses
+  **Begin raid**; officers type the same one and press **Join as officer** (the same as
+  `/tlc begin` and `/tlc join`). **Lock** at the bottom of the side bar hides them again; type
+  the password to unlock.
+  - **Loot**, the main page: every item tonight with its boss, when it dropped, the two hours
+    it can be traded counting down, and its status (waiting to announce, awaiting rolls,
+    missing votes, awarded). **Announce** on a row opens that item; **Announce all** opens
+    every waiting item at once so the whole raid has time to answer and vote. Click an item
+    to see each raider's answer, roll and tier, who on the council has voted and who still has
+    to, and to vote (click a raider), award, re-roll, undo or remove it.
+  - **Trades**, **Raid & council** (password fingerprint, council, items by hand, the last item
+    you led), **Raid chat lines** (award and trade wording), **Import / export** and
+    **History**.
+- **Practice** (`/tlc sim`) and **Settings**: tooltip priorities, the minimap button, lock
+  window positions, an opacity slider and a size slider for every Toads LC window.
+
 ## What raiders do
 
 Everyone in the raid should have the addon installed, but only the leader and officers need
@@ -64,7 +90,9 @@ to do anything beyond answering loot.
   priority tier in class colours, with your own tier marked `>`. This works in bags, on the
   loot window, on chat links and on comparison tooltips. `/tlc tooltip off` hides it.
 - **When the raid leader opens a loot session,** a small window pops up with the item, your
-  tier (or "Your spec is not on the list for this item") and a countdown. When the leader opens
+  tier (green when you're top priority, grey when your spec is not on the list) and a countdown
+  bar that turns amber in the last 15 seconds and red in the last 5. Hover a button to see what
+  it does. When the leader opens
   the whole loot pool at once, the window has a row per item: answer each one. Type an
   optional note for the council (it goes with your next answer), then press:
   - **BiS** (main spec, best in slot): rolls 1-100 for you, and the council sees you flagged BiS,
@@ -196,6 +224,23 @@ When an item is awarded and it's in your bags, the addon reminds you who to trad
 Stacks are never put in for you, so a stack of several of the same item has to be split first.
 Soulbound raid drops can only be traded for two hours after they were looted; the game refuses
 the trade after that.
+
+### Greens and blues: the loot mule
+
+With master loot on, the master looter can name one player (a bank alt, an enchanter) who gets
+every green and blue off each corpse, so nobody clicks through the trash drops. When the master
+looter opens a corpse, those items go straight to the mule; anything the council hands out stays
+on the corpse: epics (they go on the loot list) and anything on the priority list, whatever its
+rarity. Quest items are left alone.
+
+- `/tlc mule <name>` (or `/tlc mule target`, `/tlc mule me`) names the mule; `/tlc mule` shows
+  who it is and what they get; `/tlc mule off` stops.
+- `/tlc mule quality green blue` picks the rarities (any of `green`, `blue`, `epic`; green
+  and blue by default).
+
+Master loot only hands out items at or above the group's loot threshold, so with the threshold
+on rare, greens are free for all and can't be muled. If the mule is out of range or wasn't on
+the kill, the items stay on the corpse and the addon says so.
 
 ### Raid chat announcements
 
