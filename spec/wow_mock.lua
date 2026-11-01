@@ -59,7 +59,6 @@ local function setup(C, G, opts)
   G.RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
   G.RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1 } end })
   G.UIParent = newWidget(C, "Frame", "UIParent")
-  G.Minimap = newWidget(C, "Frame", "Minimap")
   G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, t) table.insert(C.printed, t) end }
   G.UISpecialFrames, G.StaticPopupDialogs, G.SlashCmdList = {}, {}, {}
   G.ACCEPT, G.CANCEL = "Accept", "Cancel"

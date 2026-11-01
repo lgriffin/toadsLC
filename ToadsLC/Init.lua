@@ -448,7 +448,6 @@ local function start()
   ns.Commands.init()
   ns.Loot.init()
   ns.Trade.init()
-  ns.MinimapButton.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do
     local s = App.registry:restore(row.state, row.at)
     if s then Chat.print("Picked up your unfinished session for " .. s.itemName .. ".") end

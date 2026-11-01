@@ -33,8 +33,6 @@ function Store.layout()
   local db = ToadsLCCharDB
   db.frames = db.frames or {} -- frame name -> { w, h, point, relPoint, x, y }
   db.scale = db.scale or 1
-  db.alpha = db.alpha or 1 -- window opacity
-  db.minimap = db.minimap or { angle = 200 } -- the minimap button's place round the rim; hide = true hides it
   return db
 end
 

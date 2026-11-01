@@ -85,14 +85,8 @@ Only your first roll counts. Rolls outside 1-100 or 1-99 are ignored.
 council frame, the raid loot list and the import/export window) moves by dragging its title and
 resizes by dragging its bottom-right corner; the lists show as many rows as fit and scroll with
 the mouse wheel. `/tlc scale 0.8` (anything from 0.5 to 2) makes them all smaller or bigger, and
-`/tlc scale reset` puts every window back to its default size, place, scale and opacity.
-`/tlc opacity 70` (20 to 100 percent) lets you see the fight through the windows, and `/tlc lock`
-stops them moving or resizing by accident (`/tlc unlock` frees them). All of this is kept per
-character.
-
-**The Toads button on the minimap** opens the raid loot list on a left-click and the council frame
-on a right-click. Drag it round the minimap's edge to move it; `/tlc minimap off` hides it and
-`/tlc minimap on` brings it back.
+`/tlc scale reset` puts every window back to its default size, place and scale. Sizes, places and
+scale are kept per character.
 
 ## Raid night for the leader and officers
 

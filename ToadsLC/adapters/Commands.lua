@@ -32,9 +32,6 @@ local HELP = {
   "/tlc status | /tlc history | /tlc tooltip on|off",
   "/tlc scale <0.5-2> | reset  make every Toads LC window bigger or smaller; reset puts them back",
   "  (drag a window's bottom-right corner to resize it; sizes and places are kept per character)",
-  "/tlc opacity <20-100>  how see-through every Toads LC window is, in percent",
-  "/tlc lock | unlock  stop the windows being dragged or resized by accident",
-  "/tlc minimap on | off  show or hide the Toads button on the minimap",
   "/tlc debug [item]  why the tooltip does or doesn't show priorities",
 }
 
@@ -230,37 +227,6 @@ function handlers.scale(rest)
     ns.Chat.print(string.format("Window scale is %.2f. Usage: /tlc scale <0.5-2> | reset. "
       .. "Drag a window's bottom-right corner to resize it.", ns.Frames.scale()))
   end
-end
-
-function handlers.opacity(rest)
-  local n = tonumber((rest:gsub("%%", "")))
-  if n and n > 1 then n = n / 100 end
-  if n and n >= 0.2 and n <= 1 then
-    ns.Frames.setAlpha(n)
-    ns.Chat.print(string.format("Window opacity %d%%.", math.floor(n * 100 + 0.5)))
-  else
-    ns.Chat.print(string.format("Window opacity is %d%%. Usage: /tlc opacity <20-100>.",
-      math.floor(ns.Frames.alpha() * 100 + 0.5)))
-  end
-end
-handlers.alpha = handlers.opacity
-
-function handlers.lock(rest)
-  local on = rest ~= "off"
-  ns.Frames.setLocked(on)
-  ns.Chat.print(on and "Windows locked: they won't move or resize. /tlc unlock to free them."
-    or "Windows unlocked.")
-end
-function handlers.unlock() handlers.lock("off") end
-
-function handlers.minimap(rest)
-  rest = rest:lower()
-  local on
-  if rest == "on" or rest == "show" then on = true
-  elseif rest == "off" or rest == "hide" then on = false
-  else on = not ns.MinimapButton.shown() end
-  ns.MinimapButton.setShown(on)
-  ns.Chat.print("Minimap button " .. (on and "shown." or "hidden. /tlc minimap on brings it back."))
 end
 
 function handlers.help()

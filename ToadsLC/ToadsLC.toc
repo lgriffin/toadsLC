@@ -24,7 +24,6 @@ adapters\Chat.lua
 adapters\CouncilComms.lua
 adapters\Tooltip.lua
 adapters\Frames.lua
-adapters\Minimap.lua
 adapters\Sim.lua
 adapters\Loot.lua
 adapters\Trade.lua
