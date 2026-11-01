@@ -211,6 +211,8 @@ function App.rerollLast()
   if s then App.reroll(s.id) else Chat.print("Nothing to re-roll.") end
 end
 
+function App.unaward(id) send(App.registry:unaward(id)) end
+
 function App.undoLast()
   local s = lastLed(function(x) return x.phase == "done" end)
   if not s then Chat.print("No award to undo."); return end
@@ -327,9 +329,11 @@ function App.debug(itemText)
   end
 end
 
+-- tonight() -> the session records saved tonight (the history page, /tlc history)
+function App.tonight() return Store.since(loginTime - 6 * 3600) end
+
 function App.history()
-  local since = loginTime - 6 * 3600
-  local recs = Store.since(since)
+  local recs = App.tonight()
   if #recs == 0 then Chat.print("No awards tonight."); return end
   for _, r in ipairs(recs) do
     local to = r.awardedTo ~= Codec.null and r.awardedTo or "not awarded"
@@ -446,6 +450,7 @@ local function start()
     function(sender) App.registry:notice("sealed", sender) end)
   ns.Tooltip.init()
   ns.Commands.init()
+  ns.Main.init()
   ns.Loot.init()
   ns.Trade.init()
   for _, row in ipairs(Store.live(LIVE_MAX_AGE, App.now())) do

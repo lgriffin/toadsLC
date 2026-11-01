@@ -5,6 +5,7 @@ local Commands = {}
 ns.Commands = Commands
 
 local HELP = {
+  "/tlc  open the Toads LC window: every command below has a button there (or click the minimap button)",
   "/tlc begin <password>  raid leader: protect council traffic with a password for tonight",
   "/tlc join <password>  officer: join the raid's protected council traffic",
   "/tlc end  forget the raid password",
@@ -129,6 +130,8 @@ local function sample(which, text)
   return S.fill(text or S[ANNOUNCE[which].default], fields)
 end
 
+Commands.ANNOUNCE, Commands.sample = ANNOUNCE, sample
+
 local function showAnnounce()
   local set, S = ns.Store.settings(), ns.Session
   for _, which in ipairs({ "award", "trade" }) do
@@ -232,12 +235,17 @@ end
 function handlers.help()
   for _, line in ipairs(HELP) do ns.Chat.print(line) end
 end
+Commands.help = handlers.help
+
+function handlers.show() ns.Main.toggle() end
+handlers.menu, handlers.lc = handlers.show, handlers.show
 
 function Commands.init()
   SLASH_TOADSLC1 = "/tlc"
   SLASH_TOADSLC2 = "/toadslc"
   SlashCmdList.TOADSLC = function(msg)
     local cmd, rest = words(msg or "")
+    if cmd == "" then ns.Main.toggle(); return end
     local fn = handlers[cmd] or handlers.help
     fn(rest)
   end
