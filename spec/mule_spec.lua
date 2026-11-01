@@ -96,6 +96,28 @@ describe("the loot mule", function()
     assert.are.same({}, W.given)
   end)
 
+  it("never gives a mule's loot to a namesake from another realm", function()
+    W.slash("mule Gally-Firemaw")
+    W.candidates = { "Poohtank", "Gally" } -- Gally of our realm, not the mule
+    W.loot(CORPSE)
+    assert.are.same({}, W.given)
+    W.candidates = { "Gally", "Gally-Firemaw" }
+    W.loot(CORPSE)
+    assert.are.same({ [2] = "Gally-Firemaw", [3] = "Gally-Firemaw" }, W.given)
+    W.given = {}
+    W.slash("mule Gally-Spineshatter") -- our own realm: the client lists them bare
+    W.candidates = { "Poohtank", "Gally" }
+    W.loot(CORPSE)
+    assert.are.same({ [2] = "Gally", [3] = "Gally" }, W.given)
+  end)
+
+  it("doesn't take a bare name for a player from another realm", function()
+    W.slash("mule Gally")
+    W.candidates = { "Poohtank", "Gally-Firemaw" }
+    W.loot(CORPSE)
+    assert.are.same({}, W.given)
+  end)
+
   it("rejects an unknown rarity", function()
     W.slash("mule quality purple")
     assert.matches("Usage: /tlc mule quality", printed())

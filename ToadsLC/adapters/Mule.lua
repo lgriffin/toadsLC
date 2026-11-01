@@ -38,8 +38,13 @@ end
 -- set(name): who gets the muled items, spelled as the group spells them; nil or "" turns the mule off
 function Mule.set(name)
   if name == "" then name = nil end
-  local unit = name and ns.Roster.unitOf(name)
-  if unit then name = UnitName(unit) or name end
+  -- a name typed with its realm keeps it; one found in the group takes the group's spelling,
+  -- realm included for a player from another realm
+  local unit = name and not name:find("-", 1, true) and ns.Roster.unitOf(name)
+  if unit then
+    local n, realm = UnitName(unit)
+    if n then name = (realm and realm ~= "") and (n .. "-" .. realm) or n end
+  end
   settings().mule = name and ns.Roster.normalize(name) or nil
 end
 
@@ -73,12 +78,23 @@ end
 
 -- candidate(slot, name) -> the mule's index in the slot's master loot list, or nil when the
 -- mule can't take it (out of range, not on the kill, not in the group)
+-- mule can't take it (out of range, not on the kill, not in the group). The full name
+-- (realm and all) wins; a bare name only counts when one candidate has it, so two players of
+-- the same name from different realms never get each other's loot.
 local function candidate(slot, name)
-  local want = key(name)
+  local full, short = name:lower(), key(name)
+  local found, matches = nil, 0
+  local realm = name:match("%-(.+)$")
+  local home = not realm or realm:gsub("%s", ""):lower() == (GetRealmName() or ""):gsub("%s", ""):lower()
   for i = 1, Mule.MAX_CANDIDATES do
     local who = GetMasterLootCandidate(slot, i)
-    if who and key(who) == want then return i end
+    if who then
+      if who:lower() == full then return i end
+      -- a bare candidate is from our realm: the mule only when the mule is from it too
+      if key(who) == short and not who:find("-", 1, true) and home then found, matches = i, matches + 1 end
+    end
   end
+  if matches == 1 then return found end
 end
 
 local function isItem(slot)
