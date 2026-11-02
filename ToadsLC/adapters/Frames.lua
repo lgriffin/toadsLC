@@ -360,15 +360,27 @@ local CAND_ROWS, CAND_MAX = 6, 12 -- rows at the default size, and at most
 local CAND_H = 44
 local CAND_BUTTONS = 216 -- the answer buttons, measured from the row's right edge
 
-local function waitingForMe()
-  local reg, out = ns.App.registry, {}
+-- openForMe() -> every item still taking answers: the ones waiting for my answer first, then
+-- the ones I've answered, so the whole pool shows at once and each is answered on its own
+local function openForMe()
+  local reg, waiting, done = ns.App.registry, {}, {}
   for _, id in ipairs(reg.order) do
     local s = reg:get(id)
-    if s.mode == "session" and s.phase == "open" and not s.myResponse and s:timeLeft(ns.App.now()) > 0 then
-      out[#out + 1] = s
+    if s.mode == "session" and s.phase == "open" and s:timeLeft(ns.App.now()) > 0 then
+      if s.myResponse then done[#done + 1] = s else waiting[#waiting + 1] = s end
     end
   end
-  return out
+  for _, s in ipairs(done) do waiting[#waiting + 1] = s end
+  return waiting, #waiting - #done
+end
+
+local ANSWER = { bis = "BiS", main = "Upgrade", offspec = "OffSpec", pass = "Pass" }
+
+-- myAnswerText(s): what I answered, and my roll once it is in
+local function myAnswerText(s)
+  local e = s:entryFor(ns.Roster.me())
+  local roll = e and e.roll and string.format(", rolled %d", e.roll) or ""
+  return colourText(GREEN, "Your answer: " .. (ANSWER[s.myResponse] or s.myResponse) .. roll)
 end
 
 -- tierText(s): where this player stands, coloured so it reads at a glance: green for top
@@ -489,14 +501,16 @@ local function buildCandidate()
   fitWindow(cand)
 end
 
--- refreshCandidate(): one row per open session still waiting for my answer; hidden when none
+-- refreshCandidate(): one row per item still taking answers, the ones waiting for my answer
+-- first; answered ones stay listed with my answer. Hidden once nothing waits for me.
 function Frames.refreshCandidate()
   if not cand then return end
-  local list = waitingForMe()
-  if #list == 0 then cand:Hide(); return end
+  local list, waiting = openForMe()
+  if waiting == 0 then cand:Hide(); return end
   local shown = cand.visible
   cand.offset = math.max(0, math.min(cand.offset, #list - shown))
-  cand.title:SetText(#list == 1 and "Toads LC: loot" or string.format("Toads LC: loot (%d items)", #list))
+  cand.title:SetText(#list == 1 and "Toads LC: loot" or string.format("Toads LC: loot (%d items, %d to answer)",
+    #list, waiting))
   cand.more:SetText(#list > shown and string.format("%d-%d of %d (scroll)", cand.offset + 1,
     math.min(#list, cand.offset + shown), #list) or "")
   local now = ns.App.now()
@@ -509,7 +523,8 @@ function Frames.refreshCandidate()
       row:Show()
       row.icon:SetTexture(iconOf(s.itemId))
       row.item:SetText(s.itemLink or s.itemName)
-      row.tier:SetText(tierText(s))
+      row.tier:SetText(s.myResponse and myAnswerText(s) or tierText(s))
+      for _, b in ipairs({ row.bis, row.up, row.off, row.pass }) do b:SetShown(not s.myResponse) end
       -- the bar's full length is the most time seen left, not closesAt - openedAt: a session that
       -- reached us from the leader carries the leader's clock in openedAt
       local left = s:timeLeft(now)

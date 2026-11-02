@@ -365,7 +365,8 @@ describe("/tlc sim", function()
     W.slash("sim raider Gruul the Dragonkiller 20")
     assert.matches("Raider practice", table.concat(W.printed, "\n"))
     local first = sims()[1]
-    assert.is_true(_G.ToadsLCCandidateFrame:IsShown())
+    assert.are.equal(3, #sims()) -- the whole pool at once, one row each
+    assert.is_true(_G.ToadsLCCandidateFrame.rows[3]:IsShown())
     assert.is_falsy(W.ns.Frames.councilShown())
     assert.are.equal("rolls", W.ns.Main.current())
     assert.is_false(W.ns.Main.unlocked()) -- no council pages for a raider
@@ -373,7 +374,7 @@ describe("/tlc sim", function()
     for _ = 1, 26 do W.tick(1) end
     assert.are.equal("done", first.phase)
     assert.is_truthy(first.awardedTo) -- Toadmaster handed it out
-    assert.are.equal(2, #sims())
+    assert.are.equal(3, #sims()) -- Gruul's three drops opened together
     W.slash("sim stop")
     assert.is_nil(W.ns.Sim.role)
   end)

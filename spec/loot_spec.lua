@@ -465,12 +465,19 @@ describe("/tlc loot all", function()
     assert.is_true(cand.rows[3]:IsShown())
     -- the leader answers the second item, then the first; each roll lands on its own item
     cand.rows[2].up.scripts.OnClick(cand.rows[2].up)
-    assert.is_false(cand.rows[3]:IsShown()) -- answered items leave the window
+    -- answered items stay in the window, last, with the answer instead of the buttons
+    assert.is_true(cand.rows[3]:IsShown())
+    assert.are.equal(sessions[2], cand.rows[3].session)
+    assert.matches("Your answer: Upgrade", cand.rows[3].tier:GetText())
+    assert.is_false(cand.rows[3].up:IsShown())
+    assert.matches("3 items, 2 to answer", cand.title:GetText())
     cand.rows[1].off.scripts.OnClick(cand.rows[1].off)
     W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 81 (1-100)")
     W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 22 (1-99)")
     assert.are.equal(81, sessions[2]:entryFor("Poohtank").roll)
     assert.are.equal(22, sessions[1]:entryFor("Poohtank").roll)
+    W.ns.Frames.refreshCandidate()
+    assert.matches("Your answer: Upgrade, rolled 81", cand.rows[3].tier:GetText())
     W.fire("CHAT_MSG_SYSTEM", "Gally rolls 90 (1-100)") -- no button behind it: ignored
     for _, s in ipairs(sessions) do assert.is_nil(s:entryFor("Gally")) end
     for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("open", e.status) end
