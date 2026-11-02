@@ -79,7 +79,7 @@ local function onItem(tooltip, data)
     return
   end
   local s = ns.App and ns.App.openSessionFor(itemId)
-  local left = s and s:timeLeft(ns.App.now())
+  local left = s and s:countdown(ns.App.now()) -- nil while an untimed item has no last call
   local me = ns.Roster.specOf("player")
   local viewer = { player = ns.Roster.me(), class = me.class, spec = me.spec }
   local lines = Tooltip.lines(item, viewer, left and left > 0 and left or nil, s and s.rules.offspecRollMax)

@@ -13,7 +13,8 @@ local HELP = {
   "/tlc roll <item> [seconds]  plain priority roll in raid chat",
   "/tlc loot  the raid's loot list: what dropped, waiting for the council",
   "/tlc loot <n> [seconds] | /tlc loot next  open a council session for item n (or the next waiting one)",
-  "/tlc loot all [seconds]  open every item still to hand out at once; raiders answer each in one window",
+  "/tlc timer [seconds]  how long one announced item takes answers (10-120, default 15)",
+  "/tlc loot all  open every item still to hand out at once, no timer (Last call / /tlc close ends it); raiders answer each in one window",
   "/tlc loot roll <n> [seconds]  plain priority roll for item n",
   "/tlc loot announce | list | add <item> | remove <n> | clear | auto on|off",
   "/tlc loot party on|off  practise in a 5-man: record party drops too (rare and up) when you lead",
@@ -76,7 +77,7 @@ function handlers.loot(rest)
   elseif sub == "next" then
     L.startNext("session", tonumber(arg))
   elseif sub == "all" then
-    L.startAll(tonumber(arg))
+    L.startAll()
   elseif sub == "roll" then
     local which, seconds = words(arg)
     if which == "" or which == "next" then L.startNext("roll", tonumber(seconds))
@@ -186,6 +187,20 @@ function handlers.award(rest)
 end
 
 function handlers.close() ns.App.closeLast() end
+
+-- /tlc timer [seconds]: how long one announced item takes answers (Announce all has no timer)
+function handlers.timer(rest)
+  local n = tonumber(rest)
+  local set = ns.Store.settings()
+  if not n then
+    ns.Chat.print(string.format("One item (or a /roll) takes answers for %d s; Announce all has no timer. /tlc timer <10-120>.",
+      set.itemSeconds or 15))
+    return
+  end
+  if n < 10 or n > 120 then ns.Chat.print("Use 10 to 120 seconds."); return end
+  set.itemSeconds = math.floor(n)
+  ns.Chat.print(string.format("One announced item (or a /roll) now takes answers for %d s.", set.itemSeconds))
+end
 function handlers.reroll() ns.App.rerollLast() end
 function handlers.undo() ns.App.undoLast() end
 

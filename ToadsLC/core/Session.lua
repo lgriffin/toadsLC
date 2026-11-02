@@ -6,7 +6,7 @@
 -- client, and the leader broadcasts every candidate change as RESPONSE. Votes and
 -- proposals come from any council member. Message types:
 --   SESSION_OPEN, RSP (raider -> leader), RESPONSE, VOTE, PROPOSE, SESSION_CLOSE,
---   REROLL, AWARD, UNAWARD, STATE_REQUEST, STATE
+--   REROLL, FINAL_CALL, TIMING, AWARD, UNAWARD, STATE_REQUEST, STATE
 local _, ns = ...
 ns = ns or {}
 
@@ -20,6 +20,10 @@ local ipairs, pairs, strformat = ipairs, pairs, string.format
 
 Session.REROLL_SECONDS = 15
 Session.FINAL_SECONDS = 10 -- the last call when the council closes an item early
+-- An untimed item (the whole pool at once) stays open until the council gives a last call or
+-- everyone has answered; this long, at most. Older clients are told WIRE_MAX_SECONDS instead.
+Session.UNTIMED_SECONDS = 12 * 3600
+Session.WIRE_MAX_SECONDS = 600
 
 local function copyList(t)
   local out = {}
@@ -41,7 +45,7 @@ local function un(v) if v == Codec.null then return nil end return v end
 ---------------------------------------------------------------------------
 
 -- new{ id?, itemId, itemName, itemLink?, item?, zone?, boss?, leader, council, rules,
---      mode = "session" | "roll", seconds?, now, priorityVersion? }
+--      mode = "session" | "roll", seconds?, untimed?, now, priorityVersion? }
 function Session.new(o)
   local rules = Resolver.rules(o.rules)
   local s = setmetatable({
@@ -58,7 +62,8 @@ function Session.new(o)
     mode = o.mode or "session",
     priorityVersion = o.priorityVersion,
     openedAt = o.now,
-    closesAt = o.now + (o.seconds or rules.sessionSeconds),
+    closesAt = o.now + (o.untimed and Session.UNTIMED_SECONDS or o.seconds or rules.sessionSeconds),
+    untimed = o.untimed and true or nil,
     closedAt = nil,
     phase = "open", -- open (taking responses) -> voting -> done
     candidates = {},
@@ -77,6 +82,14 @@ function Session:isCouncil(name) return self:isLeader(name) or contains(self.cou
 function Session:timeLeft(now)
   if self.phase ~= "open" then return 0 end
   return math.max(0, self.closesAt - now)
+end
+
+-- countdown(now) -> seconds left, or nil while an untimed item has no last call running
+function Session:countdown(now)
+  if self.phase ~= "open" then return 0 end
+  -- a re-roll has its own short timer even on an untimed item
+  if self.untimed and not self.finalCall and not self.restrict then return nil end
+  return self:timeLeft(now)
 end
 
 function Session:entryFor(player)
@@ -220,6 +233,7 @@ function Apply.REROLL(s, m, sender)
   end
   s.phase = "open"
   s.closesAt = m.at + (m.sec or Session.REROLL_SECONDS)
+  s.finalCall = nil -- the re-roll is its own short window, not the last call
   s.computedBy = nil -- the re-roll decides the computed winner again
   return true
 end
@@ -230,6 +244,21 @@ function Apply.FINAL_CALL(s, m, sender)
   if closes >= s.closesAt then return false end
   s.closesAt = closes
   s.finalCall = m.at
+  return true
+end
+
+-- TIMING: the parts of an item's timing that clients before 0.2.7 do not know (an untimed
+-- item, a running last call). It is its own message because those clients drop any
+-- SESSION_OPEN or STATE carrying a field they do not know, and ignore unknown types.
+function Apply.TIMING(s, m, sender)
+  if not s:isLeader(sender) or s.phase == "done" then return false end
+  s.untimed = m.nt or nil
+  if m.fc then
+    s.finalCall = m.fc
+  elseif s.untimed and not s.finalCall and not s.restrict then
+    -- SESSION_OPEN carries at most WIRE_MAX_SECONDS; an untimed item stays open far longer
+    s.closesAt = math.max(s.closesAt, (s.openedAt or 0) + Session.UNTIMED_SECONDS)
+  end
   return true
 end
 
@@ -470,7 +499,14 @@ function Session:serialize()
   }
 end
 
--- stateMsg() -> STATE: everything a late-joining council member needs.
+-- timingMsg() -> TIMING, or nil when the item has the plain timer every client knows
+function Session:timingMsg()
+  if not self.untimed and not self.finalCall then return nil end
+  return { t = "TIMING", s = self.id, nt = self.untimed or false, fc = self.finalCall }
+end
+
+-- stateMsg() -> STATE: everything a late-joining council member needs. nt and fc are only
+-- kept for this client's own reload snapshot; over the wire they go as TIMING (wireState).
 function Session:stateMsg(now)
   local passed = {}
   for k in pairs(self.passed) do passed[#passed + 1] = k end
@@ -498,6 +534,7 @@ function Session:stateMsg(now)
           boss = self.boss, leader = self.leader, council = self.council, rules = self.rules,
           mode = self.mode, priorityVersion = self.priorityVersion },
     oa = self.openedAt, left = self:timeLeft(now), ca = self.closedAt, ph = self.phase,
+    nt = self.untimed, fc = self.finalCall,
     cands = cands, passed = passed, votes = votes, sq = seqs, prop = self.proposal, restrict = restrict,
     cw = self.computedWinner, cb = self.computedBy, hr = self.listRoll,
     aw = self.phase == "done" and { p = self.awardedTo, by = self.awardedBy, via = self.awardedVia,
@@ -512,6 +549,8 @@ function Session.fromState(m, item, now)
                           council = o.council, rules = o.rules, mode = o.mode,
                           priorityVersion = un(o.priorityVersion), now = m.oa, seconds = 0 })
   s.closesAt = now + (m.left or 0)
+  s.untimed = m.nt == true or nil
+  s.finalCall = un(m.fc)
   s.version = m.v or 0
   s.closedAt = un(m.ca)
   s.phase = m.ph
@@ -566,11 +605,12 @@ function Session:openLine()
   local list = self.item and Priority.text(self.item)
   local how = "/roll Upgrade, /roll " .. self.rules.offspecRollMax .. " OffSpec."
   local head
+  local span = self.untimed and "open until the council calls time"
+    or strformat("%d s", self.closesAt - self.openedAt)
   if self.mode == "session" then
-    head = strformat("[ToadsLC] Loot session: %s (%d s). Answer in the frame, or %s",
-                     self.itemLink, self.closesAt - self.openedAt, how)
+    head = strformat("[ToadsLC] Loot session: %s (%s). Answer in the frame, or %s", self.itemLink, span, how)
   else
-    head = strformat("[ToadsLC] Roll: %s (%d s). %s", self.itemLink, self.closesAt - self.openedAt, how)
+    head = strformat("[ToadsLC] Roll: %s (%s). %s", self.itemLink, span, how)
   end
   return head .. (list and (" Priority: " .. list .. ".") or " Not on the priority list: BiS first, then highest roll.")
 end
@@ -731,6 +771,13 @@ function Registry:act(s, msg, what)
   return out({}, msg)
 end
 
+-- wireState(now) -> the STATE and TIMING messages for another client
+function Session:wireState(now)
+  local st = self:stateMsg(now)
+  st.nt, st.fc = nil, nil
+  return st, self:timingMsg()
+end
+
 -- open{ itemId, itemName, itemLink, zone, boss, council, rules, mode, seconds, priorityVersion }
 function Registry:open(o)
   local now = self:now()
@@ -741,9 +788,12 @@ function Registry:open(o)
   self:add(s)
   self:changed(s, "SESSION_OPEN")
   local msg = { t = "SESSION_OPEN", s = s.id, it = s.itemId, nm = s.itemName, lk = s.itemLink, z = s.zone,
-                b = s.boss, co = s.council, sec = s.closesAt - s.openedAt, oa = s.openedAt, md = s.mode,
-                pv = s.priorityVersion, ru = s.rules }
-  return out({}, msg), s
+                b = s.boss, co = s.council, sec = math.min(s.closesAt - s.openedAt, Session.WIRE_MAX_SECONDS),
+                oa = s.openedAt, md = s.mode, pv = s.priorityVersion, ru = s.rules }
+  local msgs = out({}, msg)
+  local timing = s:timingMsg()
+  if timing then out(msgs, timing) end
+  return msgs, s
 end
 
 -- respond(id, response, note) as a raider pressing a button.
@@ -962,13 +1012,14 @@ local FIELDS = {
   SESSION_CLOSE = { s = "str", at = "int", cw = "str?", cb = "str", hr = "str?", final = "bool?", v = "int?" },
   REROLL = { s = "str", at = "int", names = "names", sec = "int?", v = "int?" },
   FINAL_CALL = { s = "str", at = "int", sec = "int?", v = "int?" },
+  TIMING = { s = "str", nt = "bool", fc = "int?" },
   AWARD = { s = "str", p = "str?", via = "str?", ov = "tbl?", cw = "str?", cb = "str?", v = "int?" },
   UNAWARD = { s = "str", v = "int?" },
   STATE_REQUEST = {},
   HELLO = {},
   WELCOME = {},
   MISMATCH = {},
-  STATE = { s = "str", v = "int?", o = "tbl", oa = "int", left = "num?", ca = "int?", ph = "str",
+  STATE = { s = "str", v = "int?", o = "tbl", oa = "int", left = "num?", ca = "int?", ph = "str", nt = "bool?", fc = "int?",
             cands = "tbl?", passed = "names?", votes = "tbl?", sq = "tbl?", prop = "tbl?", restrict = "names?",
             cw = "str?", cb = "str?", hr = "str?", aw = "tbl?" },
 }
@@ -1106,7 +1157,9 @@ function Registry:handle(m, sender, trusted, signed)
     for _, id in ipairs(self.order) do
       local s = self.sessions[id]
       if trusted and s:isLeader(me) and s:isCouncil(sender) and s.phase ~= "done" then
-        out(msgs, s:stateMsg(self:now()), "WHISPER", sender)
+        local st, timing = s:wireState(self:now())
+        out(msgs, st, "WHISPER", sender)
+        if timing then out(msgs, timing, "WHISPER", sender) end
       end
     end
     return msgs
@@ -1144,6 +1197,7 @@ function Registry:handle(m, sender, trusted, signed)
 
   -- Raiders outside the council only follow the session's open, close and award.
   local public = m.t == "SESSION_CLOSE" or m.t == "AWARD" or m.t == "UNAWARD" or m.t == "REROLL" or m.t == "FINAL_CALL"
+    or m.t == "TIMING"
   if not public and not s:isCouncil(me) then return {} end
   if s:isCouncil(me) and not trusted then
     if s:isLeader(me) and s:isCouncil(sender) and (m.t == "VOTE" or m.t == "PROPOSE") then

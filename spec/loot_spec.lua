@@ -455,14 +455,16 @@ describe("/tlc loot all", function()
     W.slash("loot all")
     local sessions = open()
     assert.are.equal(3, #sessions)
-    assert.are.equal(105, sessions[1].closesAt - sessions[1].openedAt) -- 60 s + 15 s an item
-    assert.matches("^%[ToadsLC%] Loot council: 3 items open for 105 s", W.chat[1].text)
+    assert.is_true(sessions[1].untimed) -- no timer: open until the council calls time
+    assert.is_nil(sessions[1]:countdown(W.time))
+    assert.matches("^%[ToadsLC%] Loot council: 3 items open until the council calls time", W.chat[1].text)
     assert.are.equal("RAID_WARNING", W.chat[2].channel)
     assert.matches("1%. .*Dragonspine Trophy.* 2%. .* 3%. ", W.chat[3].text)
     assert.is_nil(W.chatText():find("Loot session:", 1, true)) -- no line per item
     local cand = _G.ToadsLCCandidateFrame
     assert.matches("3 items", cand.title:GetText())
     assert.is_true(cand.rows[3]:IsShown())
+    assert.matches("open", cand.rows[1].timer:GetText())
     -- the leader answers the second item, then the first; each roll lands on its own item
     cand.rows[2].up.scripts.OnClick(cand.rows[2].up)
     -- answered items stay in the window, last, with the answer instead of the buttons
@@ -481,7 +483,12 @@ describe("/tlc loot all", function()
     W.fire("CHAT_MSG_SYSTEM", "Gally rolls 90 (1-100)") -- no button behind it: ignored
     for _, s in ipairs(sessions) do assert.is_nil(s:entryFor("Gally")) end
     for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("open", e.status) end
-    W.tick(106)
+    W.tick(3600)
+    assert.are.equal(3, #open()) -- an hour on, still open: no timer
+    for _, s in ipairs(sessions) do W.ns.App.close(s.id) end -- the officers' last call
+    W.ns.Frames.refreshCandidate()
+    assert.matches("10 s", cand.rows[1].timer:GetText())
+    W.tick(10)
     assert.are.equal(0, #open())
   end)
 
@@ -527,7 +534,7 @@ describe("/tlc loot all", function()
     assert.are.equal("Interface\\AddOns\\ToadsLC\\Media\\logo", frame.logo.texture)
   end)
 
-  it("refuses while an item is still taking rolls, and takes a time", function()
+  it("refuses while an item is still taking rolls", function()
     W.loot(CORPSE)
     W.slash("loot 1")
     W.slash("loot all")
@@ -535,9 +542,17 @@ describe("/tlc loot all", function()
     assert.are.equal(1, #open())
     W.slash("close") -- a last call: answers close in 10 s
     W.tick(10)
-    W.slash("loot all 200")
+    W.slash("loot all")
     assert.are.equal(2, #open())
-    assert.are.equal(200, open()[1].closesAt - open()[1].openedAt)
+    assert.is_true(open()[1].untimed)
+  end)
+
+  it("keeps the last item of the pool untimed too", function()
+    W.loot({ CORPSE[1] })
+    W.slash("loot all")
+    assert.are.equal(1, #open())
+    assert.is_true(open()[1].untimed)
+    assert.is_nil(open()[1]:countdown(W.time))
   end)
 
   it("runs a simulated loot pool through the fake raid", function()
@@ -545,11 +560,14 @@ describe("/tlc loot all", function()
     _G.IsInGroup = function() return false end
     W.slash("sim drop gruul the dragonkiller")
     W.slash("sim drop gruul the dragonkiller")
-    W.slash("loot all 30")
+    W.slash("loot all")
     assert.are.equal(6, #open())
     assert.are.equal(0, #W.chat)
-    assert.matches("%[sim%] Loot council: 6 items open for 30 s", table.concat(W.printed, "\n"))
+    assert.matches("%[sim%] Loot council: 6 items open until the council calls time", table.concat(W.printed, "\n"))
     for _ = 1, 35 do W.tick(1) end
+    assert.are.equal(6, #open()) -- the officer practising calls time
+    for _, s in ipairs(open()) do W.ns.App.close(s.id) end
+    for _ = 1, 10 do W.tick(1) end
     assert.are.equal(0, #open())
     for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("voting", e.status) end
   end)

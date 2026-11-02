@@ -527,16 +527,23 @@ function Frames.refreshCandidate()
       for _, b in ipairs({ row.bis, row.up, row.off, row.pass }) do b:SetShown(not s.myResponse) end
       -- the bar's full length is the most time seen left, not closesAt - openedAt: a session that
       -- reached us from the leader carries the leader's clock in openedAt
-      local left = s:timeLeft(now)
-      -- keyed by closesAt too, so a re-roll of the same session starts a fresh, full bar
-      local key = s.id .. ":" .. tostring(s.closesAt)
-      local full = math.max(cand.durations[key] or 0, left, 1)
-      cand.durations[key] = full
-      local c = timeColour(left)
-      row.timer:SetText(colourText(c, string.format("%d s", left)))
-      row.bar:SetMinMaxValues(0, full)
-      row.bar:SetValue(left)
-      row.bar:SetStatusBarColor(c[1], c[2], c[3])
+      local left = s:countdown(now)
+      if not left then -- the whole pool at once: open until the council calls time
+        row.timer:SetText(colourText(GREEN, "open"))
+        row.bar:SetMinMaxValues(0, 1)
+        row.bar:SetValue(1)
+        row.bar:SetStatusBarColor(GREEN[1], GREEN[2], GREEN[3])
+      else
+        -- keyed by closesAt too, so a re-roll or a last call starts a fresh, full bar
+        local key = s.id .. ":" .. tostring(s.closesAt)
+        local full = math.max(cand.durations[key] or 0, left, 1)
+        cand.durations[key] = full
+        local c = timeColour(left)
+        row.timer:SetText(colourText(c, string.format("%d s", left)))
+        row.bar:SetMinMaxValues(0, full)
+        row.bar:SetValue(left)
+        row.bar:SetStatusBarColor(c[1], c[2], c[3])
+      end
     end
   end
   cand:Show()
@@ -810,8 +817,9 @@ function Frames.refresh()
   -- the phase, coloured: the countdown's colour while answers come in (green, amber in the last
   -- 15 s, red in the last 5), blue while the council votes, green once awarded, grey when nobody got it
   if s.phase == "open" then
-    local left = s:timeLeft(now)
-    council.status:SetText(colourText(timeColour(left), string.format("Answers open: %d s", left)) ..
+    local left = s:countdown(now)
+    council.status:SetText((left and colourText(timeColour(left), string.format("Answers open: %d s", left))
+      or colourText(GREEN, "Answers open until the last call")) ..
       string.format(" · %d passed", s:passCount()))
   elseif s.phase == "voting" then
     council.status:SetText(colourText(BLUE, "Voting") .. string.format(" · %d passed", s:passCount()))

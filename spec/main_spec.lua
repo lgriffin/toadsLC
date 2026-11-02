@@ -227,6 +227,27 @@ describe("main window", function()
     assert.is_false(page("raid").versions:IsShown())
     W.ns.Version = check
   end)
+  it("times one item by the officers' setting, and shows the raider's own roll", function()
+    W.slash("begin " .. PASSWORD)
+    W.slash("")
+    Main.go("raid")
+    assert.matches("15 s", page("raid").itemSec.value:GetText()) -- the default
+    W.slash("timer 25")
+    Main.refresh()
+    assert.matches("25 s", page("raid").itemSec.value:GetText())
+    W.slash("loot add [Dragonspine Trophy]")
+    W.slash("loot 1")
+    local s = W.ns.App.registry:latest()
+    assert.are.equal(25, s.closesAt - s.openedAt)
+    W.ns.App.respond(s.id, "bis")
+    Main.go("rolls")
+    assert.matches("…", page("rolls").list.rows[1].cells.roll:GetText()) -- pressed, roll not in yet
+    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 64 (1-100)")
+    Main.refresh()
+    assert.are.equal("BiS", page("rolls").list.rows[1].cells.mine:GetText())
+    assert.are.equal("64", page("rolls").list.rows[1].cells.roll:GetText())
+  end)
+
   it("keeps the council pages when one page breaks on the live client", function()
     -- a template the client doesn't have: the settings page can't build its sliders
     local create = _G.CreateFrame

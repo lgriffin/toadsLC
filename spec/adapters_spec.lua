@@ -370,8 +370,13 @@ describe("/tlc sim", function()
     assert.is_falsy(W.ns.Frames.councilShown())
     assert.are.equal("rolls", W.ns.Main.current())
     assert.is_false(W.ns.Main.unlocked()) -- no council pages for a raider
+    assert.is_true(first.untimed) -- like Announce all: no timer
     W.ns.App.respond(first.id, "main")
-    for _ = 1, 26 do W.tick(1) end
+    for _ = 1, 24 do W.tick(1) end
+    assert.are.equal("open", first.phase)
+    for _ = 1, 2 do W.tick(1) end
+    assert.matches("Toadmaster gives a last call", table.concat(W.printed, "\n"))
+    for _ = 1, 18 do W.tick(1) end
     assert.are.equal("done", first.phase)
     assert.is_truthy(first.awardedTo) -- Toadmaster handed it out
     assert.are.equal(3, #sims()) -- Gruul's three drops opened together
@@ -391,7 +396,8 @@ describe("/tlc sim", function()
     p.list.rows[1].announce.scripts.OnClick(p.list.rows[1].announce, "LeftButton")
     local s = sims()[1]
     assert.are.equal("open", s.phase)
-    for _ = 1, 8 do W.tick(1) end
+    assert.are.equal(15, s.closesAt - s.openedAt) -- one item: the officers' 15 s
+    for _ = 1, 3 do W.tick(1) end
     W.ns.App.close(s.id) -- a last call
     assert.is_true(s:inFinalCall(W.time))
     for _ = 1, 10 do W.tick(1) end
