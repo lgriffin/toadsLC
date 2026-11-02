@@ -12,7 +12,7 @@
 -- start each one from /tlc loot, and the fake raid answers it.
 --
 -- Two practice roles (Sim.role):
---   "raider"  (/tlc sim raider): the items open one by one and the player only answers, as a
+--   "raider"  (/tlc sim raider): the drops all open at once and the player only answers, as a
 --             raider would; no council window, and the fake officer votes and awards.
 --   "officer" (/tlc sim officer): the drops go on the loot list and the council pages open
 --             without a raid password; the player announces, closes, votes and awards.
@@ -89,6 +89,13 @@ function Sim.init()
 end
 
 function Sim.isSim(s) return s ~= nil and type(s.id) == "string" and s.id:find("^sim%-") ~= nil end
+
+-- group() -> the fake raid and the player: who a simulated item is waiting on
+function Sim.group()
+  local names = { ns.Roster.me() }
+  for _, r in ipairs(Sim.RAIDERS) do names[#names + 1] = r.name end
+  return names
+end
 
 -- practisingOfficer(): the council pages open for /tlc sim officer, without a raid password
 function Sim.practisingOfficer() return Sim.active and Sim.role == "officer" end
@@ -408,15 +415,20 @@ function Sim.start(query, seconds, role)
   local names = {}
   for i, it in ipairs(items) do names[i] = it[2] end
   if role == "raider" then
-    Chat.print(string.format("[sim] Raider practice. %s killed (%s): %s. Answer each item as it opens (BiS, Upgrade, "
+    Chat.print(string.format("[sim] Raider practice. %s killed (%s): %s. They are all open: answer each one (BiS, Upgrade, "
       .. "OffSpec or Pass) alongside %d fake raiders; %s votes and hands it out.",
       boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
   else
     Chat.print(string.format("[sim] %s killed (%s): %s. %d fake raiders and %s are answering; use the frames as normal.",
       boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
   end
-  openNext()
-  if role == "raider" and ns.Main then ns.Main.go("rolls") end
+  if role == "raider" then
+    -- the whole pool at once, as /tlc loot all opens it on raid night: one row each to answer
+    while #queue > 0 do openNext() end
+    if ns.Main then ns.Main.go("rolls") end
+  else
+    openNext()
+  end
 end
 
 -- drop(query): a fake kill whose drops only go on the loot list. Kills add up, as in a raid,

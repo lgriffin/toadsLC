@@ -201,6 +201,20 @@ function Main.missingVotes(s)
   return missing, #all
 end
 
+-- missingAnswers(s) -> who in the group hasn't answered (no roll or button press counted, no
+-- pass), and how many the group is; nil, 0 when the group isn't known (not in one)
+function Main.missingAnswers(s)
+  local group = ns.Sim.isSim(s) and ns.Sim.group() or ns.Roster.group()
+  if not group then return nil, 0 end
+  local missing = {}
+  for _, n in ipairs(group) do
+    local k = Priority.nameKey(n)
+    if not s.live[k] and not s.passed[k] then missing[#missing + 1] = n end
+  end
+  table.sort(missing)
+  return missing, #group
+end
+
 local function answered(s)
   local n = s:passCount()
   for _, e in ipairs(s.candidates) do if not e.ignored then n = n + 1 end end
@@ -213,6 +227,10 @@ function Main.statusOf(e)
   if e.status == "waiting" then return AMBER, "waiting to announce" end
   if e.status == "open" then
     if not s then return BLUE, "awaiting rolls" end
+    local _, total = Main.missingAnswers(s)
+    if total > 0 then
+      return BLUE, string.format("awaiting rolls: %d of %d in, %d s", answered(s), total, s:timeLeft(now()))
+    end
     return BLUE, string.format("awaiting rolls: %d in, %d s", answered(s), s:timeLeft(now()))
   end
   if e.status == "voting" then
@@ -620,8 +638,9 @@ local function buildLootDetail(p)
   d.hover:SetSize(320, 20)
   d.info = para(d, -54)
   d.votes = para(d, -70)
+  d.answers = para(d, -86)
   d.list = list(d, {
-    top = 96, bottom = 36,
+    top = 112, bottom = 36,
     cols = { { key = "name", title = "Name", w = 100 }, { key = "spec", title = "Spec", w = 100 },
              { key = "answer", title = "Answer", w = 70 }, { key = "roll", title = "Roll", w = 40 },
              { key = "tier", title = "Tier", w = 34 }, { key = "votes", title = "Votes", w = 110 },
@@ -655,9 +674,33 @@ local function buildLootDetail(p)
     "Reopens the item for the council to award again."), 90)
   d.window = sized(button(d, "Council window", 120, function() ns.Frames.showCouncil(sid()) end, "Council window",
     "The full council frame for this item: votes, proposals, setting a raider's spec."), 120)
+  d.callout = sized(button(d, "Call out missing", 120, function()
+    local s = d.session
+    local missing = s and Main.missingAnswers(s)
+    if not missing or #missing == 0 then return end
+    ns.App.announce(s, string.format("[ToadsLC] Still to answer for %s (%d s left): %s.", s.itemLink or s.itemName,
+      s:timeLeft(now()), table.concat(missing, ", ")))
+  end, "Call out missing", "Posts the names still to answer this item in raid chat, with the time left."), 120)
   d.remove = sized(button(d, "Remove…", 80, function()
     confirm("Take this item off the loot list?", function() ns.Loot.remove(entryN()); p.detail = nil end)
   end, "Remove", "Takes this item off tonight's loot list for the whole raid."), 80)
+end
+
+-- answersLine(s): how many have answered, who passed, and who is still to answer (or didn't)
+local function answersLine(s)
+  local missing, total = Main.missingAnswers(s)
+  local passed = {}
+  for k in pairs(s.passed) do passed[#passed + 1] = (k:gsub("^%l", string.upper)) end
+  table.sort(passed)
+  local n = answered(s)
+  local line = total > 0 and string.format("Answered %d of %d.", n, total) or string.format("Answered: %d.", n)
+  if #passed > 0 then line = line .. " Passed: " .. table.concat(passed, ", ") .. "." end
+  if not missing then return line end
+  if #missing == 0 then return line .. " " .. colourText(GREEN, "Everyone has answered.") end
+  if s.phase == "open" then
+    return line .. " " .. colourText(AMBER, "Still to answer: " .. table.concat(missing, ", ") .. ".")
+  end
+  return line .. " " .. colourText(GREY, "Didn't answer: " .. table.concat(missing, ", ") .. ".")
 end
 
 local function refreshLootDetail(p)
@@ -675,6 +718,7 @@ local function refreshLootDetail(p)
   d.info:SetText(string.format("%s · dropped %s · trade %s · %s%s", e.boss ~= "" and e.boss or "?", clock(e.at),
     colourText(tc, tt), colourText(sc, st), s and string.format(" · %d passed", s:passCount()) or ""))
   local leader = s and s:isLeader(me())
+  d.answers:SetText(s and answersLine(s) or "")
   if not s then
     d.votes:SetText(colourText(GREY, e.session and "This item's session isn't on this client (it may have been run before you joined)."
       or "Not announced yet. Announce it and the raiders' answers appear here as they come in."))
@@ -740,7 +784,9 @@ local function refreshLootDetail(p)
   d.undo:SetShown(leader and s.phase == "done" or false)
   d.window:SetShown(s ~= nil and s.mode == "session")
   d.remove:SetShown(lead())
-  flow({ d.announce, d.roll, d.close, d.reroll, d.award, d.awardTo, d.undo, d.window, d.remove }, d, 2)
+  local missing = s and s.phase == "open" and Main.missingAnswers(s)
+  d.callout:SetShown(missing and #missing > 0 or false)
+  flow({ d.announce, d.roll, d.close, d.callout, d.reroll, d.award, d.awardTo, d.undo, d.window, d.remove }, d, 2)
   return true
 end
 
@@ -1071,7 +1117,7 @@ page("practice", {
     p.box = input(p, 260, false)
     p.box:SetPoint("TOPLEFT", 6, -72)
     p.raider = sized(button(p, "Practise as a raider", 150, function() ns.Sim.start(p.box:GetText(), nil, "raider") end,
-      "Practise as a raider", "Items open one by one: answer each with BiS, Upgrade, OffSpec or Pass, as on raid night. "
+      "Practise as a raider", "The drops all open at once: answer each with BiS, Upgrade, OffSpec or Pass, as on raid night. "
       .. "A fake officer votes and hands each one out."), 150)
     p.officer = sized(button(p, "Practise as LC officer", 160, function() ns.Sim.drop(p.box:GetText(), "officer") end,
       "Practise as LC officer", "A fake kill's drops go on the Loot page, which opens without a raid password. "
