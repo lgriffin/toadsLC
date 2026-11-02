@@ -761,7 +761,7 @@ lootPage = page("loot", {
 -- showItem(entry): the loot page, opened on one item
 function Main.showItem(e)
   if not main then Main.build() end
-  lootPage.detail = e and e.key
+  if lootPage.frame then lootPage.frame.detail = e and e.key end
   Main.go("loot")
 end
 
@@ -1126,6 +1126,33 @@ local SECTIONS = {
   { key = "other", title = "" },
 }
 
+-- guard(def, step, ...): runs a page's build, layout or refresh. One page that breaks on the
+-- live client must not take the side bar or the other pages with it: the page shows what
+-- went wrong instead, the error goes to the client's error handler once, and the page is
+-- left alone after that.
+local reported = {}
+local function guard(def, step, ...)
+  local ok, err = pcall(def[step], ...)
+  if ok then return true end
+  err = tostring(err)
+  def.failed = step .. ": " .. err
+  local p = def.frame
+  if p then
+    if p.GetChildren then for _, child in ipairs({ p:GetChildren() }) do child:Hide() end end
+    p.failText = p.failText or para(p, -44)
+    p.failText:SetText(colourText(RED, "This page didn't load (" .. def.failed .. ").\n"
+      .. "Please send this line to whoever looks after Toads LC. The other pages still work."))
+    p.failText:Show()
+  end
+  if not reported[def.failed] then
+    reported[def.failed] = true
+    ns.Chat.print("Toads LC: the " .. (def.nav or def.key) .. " page failed to " .. def.failed)
+    local handler = geterrorhandler and geterrorhandler()
+    if handler then pcall(handler, "ToadsLC " .. def.key .. " page, " .. def.failed) end
+  end
+  return false
+end
+
 local function allowed(def)
   if def.needs and not def.needs() then return false end
   if def.section == "council" then return Main.unlocked() end
@@ -1186,7 +1213,7 @@ function Main.build()
       f.cw, f.ch = w - NAV_W - 34, h - 44
       for _, key in ipairs(order) do
         local def = pages[key]
-        if def.frame and def.layout then def.layout(def.frame, f.cw, f.ch) end
+        if def.frame and def.layout and not def.failed then guard(def, "layout", def.frame, f.cw, f.ch) end
       end
       if f:IsShown() then Main.refresh() end
     end,
@@ -1226,7 +1253,7 @@ function Main.build()
     p.titleText:SetTextColor(T.bronzeHi[1], T.bronzeHi[2], T.bronzeHi[3])
     if def.about then para(p, -22, def.about) end
     def.frame = p
-    if def.build then def.build(p) end
+    if def.build then guard(def, "build", p) end
     p:Hide()
   end
   main:SetScript("OnUpdate", function(self, dt)
@@ -1260,7 +1287,7 @@ function Main.refresh()
   local def = pages[current]
   if def and not allowed(def) then return Main.go(def.key) end
   refreshNav()
-  if def and def.refresh then def.refresh(def.frame) end
+  if def and def.refresh and not def.failed then guard(def, "refresh", def.frame) end
 end
 
 -- toggle(): /tlc and the minimap button. Opens on the loot page once unlocked, else on your rolls.

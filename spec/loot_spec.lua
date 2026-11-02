@@ -350,6 +350,21 @@ describe("the loot list across a raid of clients", function()
     W.deliver(all)
     assert.are.equal(3, #list(officer))
   end)
+
+  it("shows raiders without the password the leader's signed list", function()
+    leader:slash("begin frog pond 42")
+    officer:slash("join frog pond 42")
+    W.deliver(all)
+    leader:loot(CORPSE)
+    W.deliver(all)
+    assert.are.equal(3, #list(rogue)) -- the rogue never typed the password
+    -- a raider who logs in later asks for the list and the leader answers
+    local late = W.client({ me = "Gally", group = GROUP })
+    late.ns.App.import(sample)
+    late.ns.App.send(late.ns.Loot.request())
+    W.deliver({ leader, officer, rogue, late })
+    assert.are.equal(3, #list(late))
+  end)
 end)
 
 describe("several items open at once", function()

@@ -310,11 +310,15 @@ end
 
 function Loot.handles(t) return t == "LOOT" or t == "LOOT_LIST" or t == "LOOT_CLEAR" or t == "LOOT_REQUEST" end
 
--- handle(msg, sender, trusted, signed): trusted and signed as Comms reports them
-function Loot.handle(m, sender, trusted, signed)
-  if ns.App.secret() == nil then trusted = not signed end
-  if not trusted then return end
+-- handle(msg, sender, trusted, signed): trusted and signed as Comms reports them.
+-- The loot list is not secret (it is never encrypted), so a raider without the raid password
+-- follows the leader's and assists' list whether it is signed or not, the way they follow an
+-- announced item; only the leader or an assist can change it. A client holding the password
+-- takes changes only when they are signed with it. Anyone in the group may ask for the list.
+function Loot.handle(m, sender, trusted)
+  if m.t ~= "LOOT_REQUEST" and ns.App.secret() ~= nil and not trusted then return end
   if m.t == "LOOT_REQUEST" then
+    if ns.Roster.unitOf(sender) == nil then return end
     local rows = Loot.list:snapshot()
     if #rows > 0 and ns.Roster.canLead() then
       for i = 1, #rows, 10 do -- in parts, so one lost chunk loses ten entries, not the night
