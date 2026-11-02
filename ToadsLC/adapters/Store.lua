@@ -9,7 +9,7 @@ local Codec = ns.Codec
 
 -- itemSeconds: how long a single announced item takes answers (the officers' setting); the
 -- whole pool at once (Announce all) has no timer
-local DEFAULT_SETTINGS = { itemSeconds = 15, rollSeconds = 30, announceChannel = "RAID", tooltip = true, lootAuto = true, lootQuality = 4,
+local DEFAULT_SETTINGS = { itemSeconds = 15, announceChannel = "RAID", tooltip = true, lootAuto = true, lootQuality = 4,
                            autoTrade = true, lootParty = false, announceAward = true,
                            announceTrade = true, whisperAward = true }
 

@@ -152,8 +152,9 @@ function Loot.opened(s, e)
   end
 end
 
--- start(n, mode, seconds): open the entry's session ("session") or roll ("roll")
-function Loot.start(n, mode, seconds)
+-- start(n, mode, seconds, untimed): open the entry's session ("session") or roll ("roll");
+-- untimed (Announce all) takes answers until the council calls time
+function Loot.start(n, mode, seconds, untimed)
   local Chat = ns.Chat
   if not ns.Roster.canLead() then Chat.print("You need raid lead or assist to start loot."); return end
   local e = Loot.list:get(n)
@@ -167,8 +168,8 @@ function Loot.start(n, mode, seconds)
     Chat.print(busy.itemName .. " is still taking rolls; let it close (or /tlc close) first.")
     return
   end
-  if e.sim then return ns.Sim.openEntry(e, seconds) end
-  return ns.App.open(nil, seconds, mode, e)
+  if e.sim then return ns.Sim.openEntry(e, seconds, nil, untimed) end
+  return ns.App.open(nil, seconds, mode, e, nil, untimed)
 end
 
 -- startNext(mode, seconds): the first entry still waiting
@@ -202,7 +203,8 @@ function Loot.startAll()
     if LootList.startable(e) and #todo < Loot.ALL_MAX then todo[#todo + 1] = e end
   end
   if #todo == 0 then Chat.print("Nothing on the loot list is waiting."); return end
-  if #todo == 1 then return Loot.start(Loot.list:numberOf(todo[1]), "session") end
+  -- one item left is still the pool: no timer, same as when there are several
+  if #todo == 1 then return Loot.start(Loot.list:numberOf(todo[1]), "session", nil, true) end
   local busy = ns.App.registry:rolling()
   if busy then
     Chat.print(busy.itemName .. " is still taking rolls; let it close (or /tlc close) first.")

@@ -416,6 +416,80 @@ describe("Session hardening", function()
   end)
 end)
 
+describe("an untimed item (Announce all)", function()
+  local ns, Codec, priorities
+  before_each(function()
+    ns = H.core()
+    Codec = ns.Codec
+    priorities = assert(Codec.decode(H.read("fixtures/priority.sample.json")))
+  end)
+
+  -- the fields a 0.2.6 client accepts; it drops a message carrying any other
+  local OLD = {
+    SESSION_OPEN = { t = 1, s = 1, it = 1, nm = 1, lk = 1, z = 1, b = 1, co = 1, sec = 1, oa = 1, md = 1, pv = 1,
+                     ru = 1, v = 1 },
+    STATE = { t = 1, s = 1, v = 1, o = 1, oa = 1, left = 1, ca = 1, ph = 1, cands = 1, passed = 1, votes = 1,
+              sq = 1, prop = 1, restrict = 1, cw = 1, cb = 1, hr = 1, aw = 1 },
+  }
+  local function oldClientTakes(m)
+    if not OLD[m.t] then return true end
+    for k in pairs(m) do if not OLD[m.t][k] then return false end end
+    return true
+  end
+
+  local function setup()
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Raider" }, priorities)
+    local outs, s = raid.clients.Poohtank.reg:open({
+      itemId = 28830, itemName = "Dragonspine Trophy", itemLink = "[Dragonspine Trophy]",
+      council = { "Poohtank", "Hadur" }, rules = priorities.rules, mode = "session", untimed = true,
+    })
+    raid.send("Poohtank", outs)
+    raid.flush()
+    return raid, s, outs
+  end
+
+  it("goes out as TIMING, so older clients still take the open and the snapshot", function()
+    local raid, s, outs = setup()
+    assert.are.equal("SESSION_OPEN", outs[1].msg.t)
+    assert.is_true(oldClientTakes(outs[1].msg))
+    assert.are.same({ t = "TIMING", s = s.id, nt = true }, outs[2].msg)
+    for _, name in ipairs({ "Hadur", "Raider" }) do
+      local mine = raid.clients[name].reg:get(s.id)
+      assert.is_true(mine.untimed, name)
+      assert.is_nil(mine:countdown(raid.clock + 3600), name)
+    end
+    -- an officer who reloads asks for a snapshot: STATE stays readable to older clients
+    local st, timing = s:wireState(raid.clock)
+    assert.is_true(oldClientTakes(st))
+    assert.are.equal("TIMING", timing.t)
+    local c = raid.clients.Hadur
+    c.reg.sessions, c.reg.order = {}, {}
+    raid.act("Hadur", "requestState")
+    assert.is_true(c.reg:get(s.id).untimed)
+  end)
+
+  it("says it is open until the council calls time, not 43200 s", function()
+    local _, s = setup()
+    assert.matches("%(open until the council calls time%)", s:openLine())
+  end)
+
+  it("shows the last call and a re-roll's own timer", function()
+    local raid, s = setup()
+    raid.roll("Hadur", 50)
+    raid.roll("Raider", 50)
+    raid.act("Poohtank", "finalCall", s.id)
+    local officer = raid.clients.Hadur.reg:get(s.id)
+    assert.are.equal(10, officer:countdown(raid.clock))
+    raid.clock = raid.clock + 10
+    raid.send("Poohtank", raid.clients.Poohtank.reg:tick())
+    raid.flush()
+    raid.act("Poohtank", "reroll", s.id, { "Hadur", "Raider" })
+    assert.are.equal(ns.Session.REROLL_SECONDS, s:countdown(raid.clock))
+    assert.are.equal(ns.Session.REROLL_SECONDS, officer:countdown(raid.clock))
+    assert.is_false(s:inFinalCall(raid.clock)) -- the re-roll is not a last call
+  end)
+end)
+
 describe("Resolver ties in highest-roll mode", function()
   it("flags a top-roll tie across tiers and not a priority tie below the top roll", function()
     local ns = H.core()

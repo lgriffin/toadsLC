@@ -911,7 +911,7 @@ page("raid", {
     p.itemSec = slider("ToadsLCItemSecondsSlider", p, 4, -330, "One item", 10, 120, 5,
       function() return ns.Store.settings().itemSeconds or 15 end,
       function(v) ns.Store.settings().itemSeconds = v end, "%d s")
-    p.itemSecHelp = para(p, -360, colourText(GREY, "How long raiders have to answer one announced item. "
+    p.itemSecHelp = para(p, -360, colourText(GREY, "How long raiders have to answer one announced item or a /roll. "
       .. "Announce all has no timer: the items stay open until you give a last call or everyone has answered."))
     p.councilWin = sized(button(p, "Council window", 120, function()
       if not ns.Frames.showCouncil() then ns.Chat.print("No council session to show.") end

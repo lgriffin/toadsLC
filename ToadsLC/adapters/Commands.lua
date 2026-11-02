@@ -193,13 +193,13 @@ function handlers.timer(rest)
   local n = tonumber(rest)
   local set = ns.Store.settings()
   if not n then
-    ns.Chat.print(string.format("One item takes answers for %d s; Announce all has no timer. /tlc timer <10-120>.",
+    ns.Chat.print(string.format("One item (or a /roll) takes answers for %d s; Announce all has no timer. /tlc timer <10-120>.",
       set.itemSeconds or 15))
     return
   end
   if n < 10 or n > 120 then ns.Chat.print("Use 10 to 120 seconds."); return end
   set.itemSeconds = math.floor(n)
-  ns.Chat.print(string.format("One announced item now takes answers for %d s.", set.itemSeconds))
+  ns.Chat.print(string.format("One announced item (or a /roll) now takes answers for %d s.", set.itemSeconds))
 end
 function handlers.reroll() ns.App.rerollLast() end
 function handlers.undo() ns.App.undoLast() end

@@ -547,6 +547,14 @@ describe("/tlc loot all", function()
     assert.is_true(open()[1].untimed)
   end)
 
+  it("keeps the last item of the pool untimed too", function()
+    W.loot({ CORPSE[1] })
+    W.slash("loot all")
+    assert.are.equal(1, #open())
+    assert.is_true(open()[1].untimed)
+    assert.is_nil(open()[1]:countdown(W.time))
+  end)
+
   it("runs a simulated loot pool through the fake raid", function()
     _G.IsInRaid = function() return false end
     _G.IsInGroup = function() return false end
