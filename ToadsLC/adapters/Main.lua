@@ -1155,6 +1155,9 @@ local function guard(def, step, ...)
   local p = def.frame
   if p then
     if p.GetChildren then for _, child in ipairs({ p:GetChildren() }) do child:Hide() end end
+    if p.GetRegions then -- labels made straight on the page, all but its title
+      for _, region in ipairs({ p:GetRegions() }) do if region ~= p.titleText then region:Hide() end end
+    end
     p.failText = p.failText or para(p, -44)
     p.failText:SetText(colourText(RED, "This page didn't load (" .. def.failed .. ").\n"
       .. "Please send this line to whoever looks after Toads LC. The other pages still work."))
@@ -1292,7 +1295,7 @@ function Main.go(key)
   local changed = current ~= def.key
   current = def.key
   def.frame:Show()
-  if changed and def.show then def.show(def.frame) end
+  if changed and def.show and not def.failed then guard(def, "show", def.frame) end
   main:Show()
   Main.refresh()
 end

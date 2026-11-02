@@ -364,6 +364,13 @@ describe("the loot list across a raid of clients", function()
     late.ns.App.send(late.ns.Loot.request())
     W.deliver({ leader, officer, rogue, late })
     assert.are.equal(3, #list(late))
+    -- asking again straight away gets no second copy: requests can't fill the leader's queue
+    late.ns.App.send(late.ns.Loot.request())
+    local lists = 0
+    for _, o in ipairs(W.deliver({ leader, officer, rogue, late })) do
+      if o.from == leader and o.msg.dist == "WHISPER" then lists = lists + 1 end
+    end
+    assert.are.equal(0, lists)
   end)
 end)
 
