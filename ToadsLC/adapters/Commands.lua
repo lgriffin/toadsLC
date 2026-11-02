@@ -31,6 +31,8 @@ local HELP = {
   "/tlc export | /tlc export all | /tlc export clear",
   "/tlc sim [boss | raid | item] [seconds]  practice solo or in a party: fake a boss kill and a raid answering it",
   "/tlc sim drop [boss | raid | item]  fake a kill whose drops only go on the loot list",
+  "/tlc sim raider [boss | raid | item] [seconds]  practise as a raider: answer each item; a fake officer awards",
+  "/tlc sim officer [boss | raid | item]  practise as an LC officer: announce, last call, vote and award from the Loot page",
   "/tlc sim stop  stop the simulation and clear its sessions",
   "/tlc version  who in the group has Toads LC, and whether it's the newest version",
   "/tlc status | /tlc history | /tlc tooltip on|off",
@@ -204,9 +206,12 @@ function handlers.sim(rest)
   if rest:lower() == "stop" then ns.Sim.stop(); return end
   local sub, kill = words(rest)
   if sub == "drop" then ns.Sim.drop(kill); return end
+  if sub == "officer" then ns.Sim.drop(kill, "officer"); return end
+  local role
+  if sub == "raider" then role, rest = "raider", kill end
   local query, seconds = itemAndSeconds(rest)
   if tonumber(query) and tonumber(query) < 1000 then query, seconds = "", tonumber(query) end -- "/tlc sim 20"
-  ns.Sim.start(query, seconds)
+  ns.Sim.start(query, seconds, role)
 end
 
 -- the password is taken as typed (spaces included), never echoed back

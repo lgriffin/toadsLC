@@ -361,6 +361,46 @@ describe("/tlc sim", function()
     assert.matches("No boss, raid or item", err)
   end)
 
+  it("practises as a raider: answer each item, no council window, the fake officer awards", function()
+    W.slash("sim raider Gruul the Dragonkiller 20")
+    assert.matches("Raider practice", table.concat(W.printed, "\n"))
+    local first = sims()[1]
+    assert.is_true(_G.ToadsLCCandidateFrame:IsShown())
+    assert.is_falsy(W.ns.Frames.councilShown())
+    assert.are.equal("rolls", W.ns.Main.current())
+    assert.is_false(W.ns.Main.unlocked()) -- no council pages for a raider
+    W.ns.App.respond(first.id, "main")
+    for _ = 1, 26 do W.tick(1) end
+    assert.are.equal("done", first.phase)
+    assert.is_truthy(first.awardedTo) -- Toadmaster handed it out
+    assert.are.equal(2, #sims())
+    W.slash("sim stop")
+    assert.is_nil(W.ns.Sim.role)
+  end)
+
+  it("practises as an LC officer: the loot page opens without a password and the fake raid answers", function()
+    W.slash("sim officer Gruul the Dragonkiller")
+    assert.matches("LC officer practice", table.concat(W.printed, "\n"))
+    local Main = W.ns.Main
+    assert.is_nil(W.ns.App.secret())
+    assert.is_true(Main.unlocked())
+    assert.are.equal("loot", Main.current())
+    local p = Main.page("loot").listView
+    assert.are.equal(3, #W.ns.Loot.list.entries)
+    p.list.rows[1].announce.scripts.OnClick(p.list.rows[1].announce, "LeftButton")
+    local s = sims()[1]
+    assert.are.equal("open", s.phase)
+    for _ = 1, 8 do W.tick(1) end
+    W.ns.App.close(s.id) -- a last call
+    assert.is_true(s:inFinalCall(W.time))
+    for _ = 1, 10 do W.tick(1) end
+    assert.are.equal("voting", s.phase)
+    for _ = 1, 3 do W.tick(1) end
+    assert.is_truthy(s.votes.toadmaster)
+    W.slash("sim stop")
+    assert.is_false(Main.unlocked()) -- locked again once practice ends
+  end)
+
   it("runs a fake kill through responses, rolls, the officer's vote and the next item", function()
     W.slash("sim Gruul the Dragonkiller 20")
     assert.matches("%[sim%] Gruul the Dragonkiller killed", table.concat(W.printed, "\n"))

@@ -350,6 +350,28 @@ describe("the loot list across a raid of clients", function()
     W.deliver(all)
     assert.are.equal(3, #list(officer))
   end)
+
+  it("shows raiders without the password the leader's signed list", function()
+    leader:slash("begin frog pond 42")
+    officer:slash("join frog pond 42")
+    W.deliver(all)
+    leader:loot(CORPSE)
+    W.deliver(all)
+    assert.are.equal(3, #list(rogue)) -- the rogue never typed the password
+    -- a raider who logs in later asks for the list and the leader answers
+    local late = W.client({ me = "Gally", group = GROUP })
+    late.ns.App.import(sample)
+    late.ns.App.send(late.ns.Loot.request())
+    W.deliver({ leader, officer, rogue, late })
+    assert.are.equal(3, #list(late))
+    -- asking again straight away gets no second copy: requests can't fill the leader's queue
+    late.ns.App.send(late.ns.Loot.request())
+    local lists = 0
+    for _, o in ipairs(W.deliver({ leader, officer, rogue, late })) do
+      if o.from == leader and o.msg.dist == "WHISPER" then lists = lists + 1 end
+    end
+    assert.are.equal(0, lists)
+  end)
 end)
 
 describe("several items open at once", function()
@@ -504,7 +526,8 @@ describe("/tlc loot all", function()
     W.slash("loot all")
     assert.matches("still taking rolls", W.printed[#W.printed])
     assert.are.equal(1, #open())
-    W.slash("close")
+    W.slash("close") -- a last call: answers close in 10 s
+    W.tick(10)
     W.slash("loot all 200")
     assert.are.equal(2, #open())
     assert.are.equal(200, open()[1].closesAt - open()[1].openedAt)

@@ -38,6 +38,50 @@ describe("a raid of clients", function()
 
   local function rollOnLeader(line) leader:fire("CHAT_MSG_SYSTEM", line) end
 
+  it("gives a 10 second last call when the council closes early, and closes on a second press", function()
+    leader:slash("session " .. DST .. " 60")
+    W.deliver(all)
+    local s = latest(leader)
+    leader:slash("close")
+    W.deliver(all)
+    assert.matches("Last call for .*Dragonspine Trophy.*10 s left", leader:chatText())
+    assert.are.equal("open", s.phase)
+    assert.are.equal(10, s:timeLeft(leader.time))
+    assert.are.equal(10, latest(hunter):timeLeft(hunter.time)) -- raiders' countdowns jump too
+    W.tickAll(all, 9)
+    W.deliver(all)
+    assert.are.equal("open", s.phase)
+    W.tickAll(all, 1)
+    W.deliver(all)
+    assert.are.equal("voting", s.phase)
+    assert.are.equal("voting", latest(officer).phase)
+
+    leader:slash("session " .. DST .. " 60")
+    W.deliver(all)
+    local again = latest(leader)
+    leader:slash("close")
+    leader:slash("close") -- during the last call: now
+    assert.are.equal("voting", again.phase)
+  end)
+
+  it("closes an item as soon as everyone in the group has answered", function()
+    leader:slash("session " .. DST .. " 60")
+    W.deliver(all)
+    local s = latest(leader)
+    for _, c in ipairs({ leader, officer, warrior, hunter }) do c.ns.App.respond(s.id, "pass") end
+    W.deliver(all)
+    W.tickAll(all, 0)
+    assert.are.equal("open", s.phase) -- the rogue hasn't answered
+    rogue.ns.App.respond(s.id, "main")
+    W.deliver(all)
+    rollOnLeader("Anasazi rolls 42 (1-100)")
+    W.deliver(all)
+    W.tickAll(all, 0)
+    W.deliver(all)
+    assert.are.equal("voting", s.phase)
+    assert.are.equal("Anasazi", s.computedWinner) -- the list's pick goes to the council
+  end)
+
   it("carries a council session from open to award across every client", function()
     leader:slash("session " .. DST .. " 30")
     W.deliver(all)

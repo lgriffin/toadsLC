@@ -19,6 +19,7 @@ local nameKey = Priority.nameKey
 local ipairs, pairs, strformat = ipairs, pairs, string.format
 
 Session.REROLL_SECONDS = 15
+Session.FINAL_SECONDS = 10 -- the last call when the council closes an item early
 
 local function copyList(t)
   local out = {}
@@ -223,6 +224,15 @@ function Apply.REROLL(s, m, sender)
   return true
 end
 
+function Apply.FINAL_CALL(s, m, sender)
+  if not s:isLeader(sender) or s.phase ~= "open" then return false end
+  local closes = m.at + (m.sec or Session.FINAL_SECONDS)
+  if closes >= s.closesAt then return false end
+  s.closesAt = closes
+  s.finalCall = m.at
+  return true
+end
+
 function Apply.AWARD(s, m, sender)
   if not s:isLeader(sender) or s.phase == "open" then return false end
   s.awardedTo = m.p
@@ -365,6 +375,28 @@ function Session:rerollMsg(now, names)
   end
   if not names or #names < 2 then return nil end
   return { t = "REROLL", s = self.id, at = now, names = names, sec = Session.REROLL_SECONDS }
+end
+
+-- finalMsg(now) -> FINAL_CALL msg: answers close in FINAL_SECONDS, or nil when they already
+-- close sooner than that
+function Session:finalMsg(now)
+  if self.phase ~= "open" or self:timeLeft(now) <= Session.FINAL_SECONDS then return nil end
+  return { t = "FINAL_CALL", s = self.id, at = now, sec = Session.FINAL_SECONDS }
+end
+
+-- inFinalCall(now): the council called time and the last seconds are running
+function Session:inFinalCall(now)
+  return self.phase == "open" and self.finalCall ~= nil and self:timeLeft(now) > 0
+end
+
+-- everyoneAnswered(names): every name has answered (a counted roll or a pass)
+function Session:everyoneAnswered(names)
+  if not names or #names == 0 then return false end
+  for _, n in ipairs(names) do
+    local k = nameKey(n)
+    if not self.live[k] and not self.passed[k] then return false end
+  end
+  return true
 end
 
 -- awardMsg(by, player, via, reason) -> AWARD msg. player nil = no award.
@@ -841,6 +873,16 @@ function Registry:close(id)
   return self:act(s, s:closeMsg(self:now()))
 end
 
+-- finalCall(id): the council closes early. Answers stay open FINAL_SECONDS more, so anyone
+-- still deciding gets a last call; a second press during the last call closes straight away.
+function Registry:finalCall(id)
+  local s = self.sessions[id]
+  if not s or not s:isLeader(self.ctx.me) or s.phase ~= "open" then return {} end
+  local m = s:finalMsg(self:now())
+  if not m then return self:close(id) end
+  return self:act(s, m)
+end
+
 function Registry:reroll(id, names)
   local s = self.sessions[id]
   if not s or not s:isLeader(self.ctx.me) then return {} end
@@ -862,7 +904,8 @@ function Registry:unaward(id)
   return self:act(s, { t = "UNAWARD", s = id })
 end
 
--- tick(): close the response window on sessions I lead whose timer ran out.
+-- tick(): close the response window on sessions I lead whose timer ran out, or that everyone
+-- in the group has answered (ctx.group() -> names; nil when not in a group)
 function Registry:tick()
   local now, msgs = self:now(), {}
   if self.helloAt and now - self.helloAt >= Registry.HELLO_WAIT then
@@ -871,7 +914,10 @@ function Registry:tick()
   end
   for _, id in ipairs(self.order) do
     local s = self.sessions[id]
-    if s.phase == "open" and s:isLeader(self.ctx.me) and now >= s.closesAt then
+    -- /tlc sim's sessions ("sim-" ids) answer from a fake raid outside the group: timer only
+    local sim = s.id:find("^sim%-") ~= nil
+    if s.phase == "open" and s:isLeader(self.ctx.me)
+      and (now >= s.closesAt or (not sim and s:everyoneAnswered(self.ctx.group and self.ctx.group()))) then
       for _, o in ipairs(self:close(id)) do msgs[#msgs + 1] = o end
     end
   end
@@ -915,6 +961,7 @@ local FIELDS = {
   PROPOSE = { s = "str", p = "str?", re = "str?", v = "int?", q = "int?" },
   SESSION_CLOSE = { s = "str", at = "int", cw = "str?", cb = "str", hr = "str?", final = "bool?", v = "int?" },
   REROLL = { s = "str", at = "int", names = "names", sec = "int?", v = "int?" },
+  FINAL_CALL = { s = "str", at = "int", sec = "int?", v = "int?" },
   AWARD = { s = "str", p = "str?", via = "str?", ov = "tbl?", cw = "str?", cb = "str?", v = "int?" },
   UNAWARD = { s = "str", v = "int?" },
   STATE_REQUEST = {},
@@ -1096,7 +1143,7 @@ function Registry:handle(m, sender, trusted, signed)
   end
 
   -- Raiders outside the council only follow the session's open, close and award.
-  local public = m.t == "SESSION_CLOSE" or m.t == "AWARD" or m.t == "UNAWARD" or m.t == "REROLL"
+  local public = m.t == "SESSION_CLOSE" or m.t == "AWARD" or m.t == "UNAWARD" or m.t == "REROLL" or m.t == "FINAL_CALL"
   if not public and not s:isCouncil(me) then return {} end
   if s:isCouncil(me) and not trusted then
     if s:isLeader(me) and s:isCouncil(sender) and (m.t == "VOTE" or m.t == "PROPOSE") then

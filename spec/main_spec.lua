@@ -115,6 +115,7 @@ describe("main window", function()
       Main.refresh()
       assert.matches("awaiting rolls: 0 in", row1().cells.status:GetText())
       W.ns.App.closeLast()
+      W.tick(10) -- the last call runs out
       click(p.all) -- the second copy, still waiting
       Main.refresh()
       assert.matches("awaiting rolls", page("loot").listView.list.rows[2].cells.status:GetText())
@@ -126,6 +127,7 @@ describe("main window", function()
       W.ns.App.respond(s.id, "main")
       W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 80 (1-100)")
       W.ns.App.close(s.id)
+      W.tick(10)
       Main.refresh()
       assert.matches("missing votes", row1().cells.status:GetText())
 
@@ -203,5 +205,27 @@ describe("main window", function()
     Main.go("raid")
     assert.is_false(page("raid").versions:IsShown())
     W.ns.Version = check
+  end)
+  it("keeps the council pages when one page breaks on the live client", function()
+    -- a template the client doesn't have: the settings page can't build its sliders
+    local create = _G.CreateFrame
+    _G.CreateFrame = function(kind, ...)
+      if kind == "Slider" then error("Couldn't find inherited node \"OptionsSliderTemplate\"") end
+      return create(kind, ...)
+    end
+    W.slash("")
+    _G.CreateFrame = create
+    local p = page("unlock")
+    Main.go("loot")
+    p.box:SetText(PASSWORD)
+    click(p.begin)
+    assert.is_true(Main.unlocked())
+    assert.are.equal("loot", Main.current())
+    assert.is_true(_G.ToadsLCMainFrame.navs.trades:IsShown())
+    Main.go("settings")
+    assert.matches("didn't load", page("settings").failText:GetText())
+    assert.matches("Settings page failed", table.concat(W.printed, "\n"))
+    Main.go("loot")
+    assert.are.equal("loot", Main.current())
   end)
 end)
