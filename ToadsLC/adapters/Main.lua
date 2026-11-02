@@ -33,7 +33,11 @@ local function now() return ns.App.now() end
 local function me() return ns.Roster.me() end
 
 -- unlocked(): this character typed tonight's raid password and has not locked the window since
-function Main.unlocked() return ns.App.secret() ~= nil and not isLocked() end
+-- (or is practising as an LC officer with /tlc sim officer, which needs no password)
+function Main.unlocked()
+  if ns.Sim and ns.Sim.practisingOfficer and ns.Sim.practisingOfficer() then return true end
+  return ns.App.secret() ~= nil and not isLocked()
+end
 
 ---------------------------------------------------------------------------
 -- small widgets
@@ -634,8 +638,8 @@ local function buildLootDetail(p)
     "Opens this item to the raid: raiders answer, the council votes."), 90)
   d.roll = sized(button(d, "Roll", 60, function() ns.Loot.start(entryN(), "roll") end, "Plain roll",
     "Raiders /roll in raid chat; no council vote."), 60)
-  d.close = sized(button(d, "Close responses", 120, function() ns.App.close(sid()) end, "Close responses",
-    "Stop taking answers now instead of waiting for the countdown, and move to voting."), 120)
+  d.close = sized(button(d, "Last call (10 s)", 120, function() ns.App.close(sid()) end, "Close responses early",
+    "Gives raiders a last call: answers close in 10 seconds, announced in raid chat. Press again to close straight away."), 120)
   d.reroll = sized(button(d, "Re-roll tied", 100, function() ns.App.reroll(sid()) end, "Re-roll tied",
     "The players tied at the top roll again."), 100)
   d.award = sized(button(d, "Award", 160, function(self) if self.player then ns.App.award(sid(), self.player, self.via) end end,
@@ -721,6 +725,7 @@ local function refreshLootDetail(p)
   d.announce:SetEnabled(not busy); d.roll:SetEnabled(not busy)
   d.announce.disabledWhy, d.roll.disabledWhy = BUSY, BUSY
   d.close:SetShown(leader and s.phase == "open" or false)
+  d.close:SetText(s and s:inFinalCall(now()) and "Close now" or "Last call (10 s)")
   d.reroll:SetShown(leader and s.phase == "voting" and s:result().tie or false)
   local opts = s and s:awardOptions() or {}
   -- only the list's pick or the council's votes: a tie, or a list that names nobody, goes to
@@ -847,7 +852,8 @@ page("raid", {
         ns.Frames.prompt("Reason for awarding " .. name .. ":", function(reason) ns.App.awardLast(name, reason) end)
       end)
     end), 90)
-    p.closeLast = sized(button(p, "Close", 70, function() ns.App.closeLast() end, "Close responses"), 70)
+    p.closeLast = sized(button(p, "Last call (10 s)", 120, function() ns.App.closeLast() end, "Close responses early",
+      "Gives raiders a last call: answers close in 10 seconds, announced in raid chat. Press again to close straight away."), 120)
     p.rerollLast = sized(button(p, "Re-roll tied", 100, function() ns.App.rerollLast() end), 100)
     p.undoLast = sized(button(p, "Undo award", 90, function() ns.App.undoLast() end), 90)
     p.councilWin = sized(button(p, "Council window", 120, function()
@@ -877,6 +883,7 @@ page("raid", {
     p.awardList:SetShown(s ~= nil and s.phase ~= "done")
     p.awardTo:SetShown(s ~= nil and s.phase ~= "done")
     p.closeLast:SetShown(s ~= nil and s.phase == "open")
+    p.closeLast:SetText(s and s:inFinalCall(now()) and "Close now" or "Last call (10 s)")
     p.rerollLast:SetShown(s ~= nil and s.phase == "voting" and s:result().tie or false)
     p.undoLast:SetShown(s ~= nil and s.phase == "done")
     p.councilWin:SetShown(true)
@@ -1063,16 +1070,25 @@ page("practice", {
     text(p, "GameFontNormalSmall", 0, -56, "Boss, raid or item (empty: a random boss)")
     p.box = input(p, 260, false)
     p.box:SetPoint("TOPLEFT", 6, -72)
+    p.raider = sized(button(p, "Practise as a raider", 150, function() ns.Sim.start(p.box:GetText(), nil, "raider") end,
+      "Practise as a raider", "Items open one by one: answer each with BiS, Upgrade, OffSpec or Pass, as on raid night. "
+      .. "A fake officer votes and hands each one out."), 150)
+    p.officer = sized(button(p, "Practise as LC officer", 160, function() ns.Sim.drop(p.box:GetText(), "officer") end,
+      "Practise as LC officer", "A fake kill's drops go on the Loot page, which opens without a raid password. "
+      .. "Announce them, give a last call, vote and award while a fake raid answers."), 160)
     p.start = sized(button(p, "Fake a kill", 100, function() ns.Sim.start(p.box:GetText()) end, "Fake a kill",
       "Opens its drops one by one, with a fake raid answering and officers voting."), 100)
     p.drop = sized(button(p, "Fake drops to the list", 160, function() ns.Sim.drop(p.box:GetText()) end, "Fake drops",
       "Puts a fake kill's drops on the loot list, to practise announcing them."), 160)
     p.stop = sized(button(p, "Stop", 70, function() ns.Sim.stop() end, "Stop", "Stops the simulation and clears its items."), 70)
-    p.state = para(p, -132)
+    p.state = para(p, -160)
   end,
   refresh = function(p)
-    flow({ p.start, p.drop, p.stop }, p, -100)
-    p.state:SetText(ns.Sim.active and colourText(BLUE, "A simulation is running.") or colourText(GREY, "No simulation running."))
+    flow({ p.raider, p.officer, p.stop }, p, -100)
+    flow({ p.start, p.drop }, p, -128)
+    local role = ns.Sim.role == "raider" and "Raider practice is running." or (ns.Sim.role == "officer"
+      and "LC officer practice is running: the council pages are open until you press Stop." or "A simulation is running.")
+    p.state:SetText(ns.Sim.active and colourText(BLUE, role) or colourText(GREY, "No simulation running."))
   end,
 })
 
@@ -1181,7 +1197,9 @@ local function refreshNav()
     if sec.title ~= "" then
       h:ClearAllPoints()
       h:SetPoint("TOPLEFT", 8, y)
-      local lockText = sec.key == "council" and (Main.unlocked() and colourText(GREEN, " (unlocked)") or colourText(GREY, " (locked)")) or ""
+      local practice = ns.Sim.practisingOfficer and ns.Sim.practisingOfficer()
+      local lockText = sec.key == "council" and (practice and colourText(BLUE, " (practice)")
+        or (Main.unlocked() and colourText(GREEN, " (unlocked)") or colourText(GREY, " (locked)"))) or ""
       h:SetText(sec.title .. lockText)
       y = y - 18
     else

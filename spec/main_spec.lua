@@ -115,6 +115,7 @@ describe("main window", function()
       Main.refresh()
       assert.matches("awaiting rolls: 0 in", row1().cells.status:GetText())
       W.ns.App.closeLast()
+      W.tick(10) -- the last call runs out
       click(p.all) -- the second copy, still waiting
       Main.refresh()
       assert.matches("awaiting rolls", page("loot").listView.list.rows[2].cells.status:GetText())
@@ -126,6 +127,7 @@ describe("main window", function()
       W.ns.App.respond(s.id, "main")
       W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 80 (1-100)")
       W.ns.App.close(s.id)
+      W.tick(10)
       Main.refresh()
       assert.matches("missing votes", row1().cells.status:GetText())
 

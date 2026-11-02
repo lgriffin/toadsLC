@@ -51,6 +51,18 @@ function Roster.units()
   return function() i = i + 1; return list[i] end
 end
 
+-- group() -> the names of everyone online in the group, or nil when not in one: an item
+-- closes early once they have all answered
+function Roster.group()
+  if not IsInGroup() then return nil end
+  local names = {}
+  for unit in Roster.units() do
+    local name = UnitName(unit)
+    if name and UnitIsConnected(unit) then names[#names + 1] = Roster.normalize(name) end
+  end
+  return names
+end
+
 function Roster.unitOf(name)
   local key = Priority.nameKey(name)
   for unit in Roster.units() do

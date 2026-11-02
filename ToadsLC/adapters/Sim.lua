@@ -10,6 +10,12 @@
 -- The drops also go on the loot list (adapters/Loot.lua), marked as simulated. /tlc sim
 -- opens them one after the other; /tlc sim drop only records them, for trying the list:
 -- start each one from /tlc loot, and the fake raid answers it.
+--
+-- Two practice roles (Sim.role):
+--   "raider"  (/tlc sim raider): the items open one by one and the player only answers, as a
+--             raider would; no council window, and the fake officer votes and awards.
+--   "officer" (/tlc sim officer): the drops go on the loot list and the council pages open
+--             without a raid password; the player announces, closes, votes and awards.
 local _, ns = ...
 
 local Sim = {}
@@ -45,6 +51,7 @@ Sim.random = math.random -- the tests swap in a fixed sequence
 local tasks, generation, queue, advanced, drops = {}, 0, {}, {}, 0
 
 Sim.active = false -- between /tlc sim and /tlc sim stop (or a live session opening)
+Sim.role = nil -- "raider", "officer" or nil (the player runs everything, as /tlc sim always has)
 Sim.MIN_SECONDS, Sim.MAX_SECONDS = 5, 600 -- what other clients accept in a SESSION_OPEN
 
 local function chance(p) return Sim.random() < p end
@@ -82,6 +89,12 @@ function Sim.init()
 end
 
 function Sim.isSim(s) return s ~= nil and type(s.id) == "string" and s.id:find("^sim%-") ~= nil end
+
+-- practisingOfficer(): the council pages open for /tlc sim officer, without a raid password
+function Sim.practisingOfficer() return Sim.active and Sim.role == "officer" end
+
+-- hidesCouncil(s): in raider practice the player sees what a raider sees, not the council window
+function Sim.hidesCouncil(s) return Sim.role == "raider" and Sim.isSim(s) end
 
 -- who(name) -> { class, spec } for a fake raider, so the leader's roster knows them. Only while
 -- a simulation runs, and never for someone of that name actually in the group.
@@ -238,6 +251,14 @@ local function officerVote(s)
   ns.Chat.print(string.format("[sim] %s voted for %s.", Sim.OFFICER, target.player))
 end
 
+-- officerAward(s): in raider practice the fake officer hands the item out: to the one they
+-- voted for, else the list's pick
+local function officerAward(s)
+  if s.phase ~= "voting" then return end
+  local winner = s.votes[Priority.nameKey(Sim.OFFICER)] or s.computedWinner
+  ns.App.send(ns.App.registry:award(s.id, winner, winner and "votes" or nil))
+end
+
 local function open(job)
   local App, Store = ns.App, ns.Store
   local pdb = Store.priorities() or {}
@@ -278,7 +299,12 @@ function Sim.onChange(s, what)
   if not Sim.active or not Sim.isSim(s) or not s:isLeader(ns.Roster.me()) then return end
   if what == "SESSION_CLOSE" then
     after(2, function() officerVote(s) end)
-    after(3, function() advance(s) end)
+    if Sim.role == "raider" then
+      after(4, function() officerAward(s) end)
+      after(6, function() advance(s) end)
+    else
+      after(3, function() advance(s) end)
+    end
   elseif what == "REROLL" then
     -- the tied fake raiders roll again, inside the re-roll window
     for _, r in ipairs(Sim.RAIDERS) do
@@ -300,15 +326,20 @@ end
 -- drop them. Returns how many there were.
 local function clear()
   Sim.active = false
+  Sim.role = nil
   generation = generation + 1
   queue, advanced = {}, {}
   local App, reg = ns.App, ns.App.registry
   local kept, dropped = {}, 0
   Sim.quiet = true -- no "not awarded" line for each one
+  -- end them all first: the frames refreshed by each award read every session still listed
+  for _, id in ipairs(reg.order) do
+    local s = reg.sessions[id]
+    if Sim.isSim(s) and s.phase ~= "done" and s:isLeader(ns.Roster.me()) then App.send(reg:award(id, nil, nil)) end
+  end
   for _, id in ipairs(reg.order) do
     local s = reg.sessions[id]
     if Sim.isSim(s) then
-      if s.phase ~= "done" and s:isLeader(ns.Roster.me()) then App.send(reg:award(id, nil, nil)) end
       reg.sessions[id] = nil
       dropped = dropped + 1
     else
@@ -361,38 +392,55 @@ local function record(zone, boss, items)
   return entries
 end
 
-function Sim.start(query, seconds)
+-- start(query, seconds, role): role nil (you run it all) or "raider" (you only answer)
+function Sim.start(query, seconds, role)
   local Chat = ns.Chat
   if not checks(seconds) then return end
   local zone, boss, items = Sim.choose(query)
   if not zone then Chat.print(boss); return end
   clear() -- a new run replaces the last one
   Sim.active = true
+  Sim.role = role
   local entries = record(zone, boss, items)
   for i, it in ipairs(items) do
     queue[#queue + 1] = { item = it, zone = zone, boss = boss, seconds = seconds or Sim.SECONDS, entry = entries[i] }
   end
   local names = {}
   for i, it in ipairs(items) do names[i] = it[2] end
-  Chat.print(string.format("[sim] %s killed (%s): %s. %d fake raiders and %s are answering; use the frames as normal.",
-    boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+  if role == "raider" then
+    Chat.print(string.format("[sim] Raider practice. %s killed (%s): %s. Answer each item as it opens (BiS, Upgrade, "
+      .. "OffSpec or Pass) alongside %d fake raiders; %s votes and hands it out.",
+      boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+  else
+    Chat.print(string.format("[sim] %s killed (%s): %s. %d fake raiders and %s are answering; use the frames as normal.",
+      boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+  end
   openNext()
+  if role == "raider" and ns.Main then ns.Main.go("rolls") end
 end
 
 -- drop(query): a fake kill whose drops only go on the loot list. Kills add up, as in a raid,
 -- until /tlc sim stop or a /tlc sim run.
-function Sim.drop(query)
+function Sim.drop(query, role)
   local Chat = ns.Chat
   if not checks(nil) then return end
   local zone, boss, items = Sim.choose(query)
   if not zone then Chat.print(boss); return end
-  if not Sim.active then clear() end
+  if not Sim.active or (role and Sim.role ~= role) then clear() end
   Sim.active = true
+  Sim.role = role or Sim.role
   record(zone, boss, items)
   local names = {}
   for i, it in ipairs(items) do names[i] = it[2] end
-  Chat.print(string.format("[sim] %s killed (%s): %s, on the loot list. /tlc loot to start them; %d fake raiders and %s answer.",
-    boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+  if Sim.role == "officer" then
+    Chat.print(string.format("[sim] LC officer practice. %s killed (%s): %s, on the loot list. Announce them from the "
+      .. "Loot page; %d fake raiders answer, %s votes once answers close, and you award.",
+      boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+    if ns.Main then ns.Main.go("loot") end
+  else
+    Chat.print(string.format("[sim] %s killed (%s): %s, on the loot list. /tlc loot to start them; %d fake raiders and %s answer.",
+      boss, zone, table.concat(names, ", "), #Sim.RAIDERS, Sim.OFFICER))
+  end
 end
 
 -- openEntry(entry, seconds, quiet): a simulated loot list entry, started from /tlc loot;

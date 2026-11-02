@@ -724,12 +724,13 @@ local function buildCouncil()
   end)
   council.noAward:SetPoint("LEFT", council.awardTo, "RIGHT", 4, 0)
   tip(council.noAward, "No award", "Nobody gets this item. It can be started again from the loot list.")
-  council.closeBtn = button(council, "Close responses", 120, function()
+  council.closeBtn = button(council, "Last call (10 s)", 120, function()
     local s = shownSession()
     if s then ns.App.close(s.id) end
   end)
   council.closeBtn:SetPoint("LEFT", council.noAward, "RIGHT", 4, 0)
-  tip(council.closeBtn, "Close responses", "Stop taking answers now instead of waiting for the countdown, and move to voting.")
+  tip(council.closeBtn, "Close responses early",
+    "Gives raiders a last call: answers close in 10 seconds, announced in raid chat. Press again to close straight away.")
   council.reroll = button(council, "Re-roll tied", 100, function()
     local s = shownSession()
     if s then ns.App.reroll(s.id) end
@@ -913,6 +914,7 @@ function Frames.refresh()
   end
   for _, b in pairs({ council.awardTo, council.noAward }) do b:SetShown(canAward) end
   council.closeBtn:SetShown(leader and s.phase == "open")
+  council.closeBtn:SetText(s:inFinalCall(ns.App.now()) and "Close now" or "Last call (10 s)")
   council.reroll:SetShown(leader and s.phase == "voting" and r.tie)
   council.propose:SetShown(s.phase ~= "done")
 end

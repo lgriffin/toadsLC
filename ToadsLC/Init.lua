@@ -62,12 +62,17 @@ local function onChange(s, what)
   local me = Roster.me()
   if what == "SESSION_OPEN" then
     if s.mode == "session" then
-      if s:isCouncil(me) then Frames.showCouncil(s.id) end
+      if s:isCouncil(me) and not ns.Sim.hidesCouncil(s) then Frames.showCouncil(s.id) end
       Frames.showCandidate(s)
     end
   elseif what == "SESSION_CLOSE" then
     Frames.hideCandidate(s)
     if s:isLeader(me) and s.mode == "roll" then App.announce(s, s:resultLine()) end
+  elseif what == "FINAL_CALL" then
+    if s:isLeader(me) then
+      App.announce(s, string.format("[ToadsLC] Last call for %s: %d s left to answer.", s.itemLink or s.itemName,
+        s:timeLeft(App.now())), true)
+    end
   elseif what == "REROLL" then
     if s:isLeader(me) then
       local names = {}
@@ -171,7 +176,9 @@ end
 function App.vote(id, player) send(App.registry:vote(id, player)) end
 function App.propose(id, player, reason) send(App.registry:propose(id, player, reason)) end
 function App.setSpec(id, player, spec) send(App.registry:setSpec(id, player, spec)) end
-function App.close(id) send(App.registry:close(id)) end
+-- close(id): the council ends answers early, with a last call of Session.FINAL_SECONDS
+-- (a second press during the last call closes straight away)
+function App.close(id) send(App.registry:finalCall(id)) end
 function App.reroll(id) send(App.registry:reroll(id)) end
 
 function App.award(id, player, via, reason)
@@ -199,7 +206,7 @@ function App.awardLast(name, reason)
     elseif opts.highest and Priority.nameKey(opts.highest) == Priority.nameKey(name) then via = "highest-roll" end
     App.award(s.id, name, via, reason)
   else
-    if s.phase == "open" then App.close(s.id) end
+    if s.phase == "open" then send(App.registry:close(s.id)) end
     local tied = s:awardOptions().tied
     if tied then
       Chat.print("Tied: " .. table.concat(tied, " and ") .. ". /tlc reroll, or /tlc award <name> [reason].")
@@ -446,6 +453,7 @@ local function start()
     now = App.now,
     item = function(id, name) return Priority.lookup(Store.priorities(), id, name) end,
     who = Roster.who,
+    group = Roster.group,
     onChange = onChange,
     secured = function() return App.secret() ~= nil end,
     hosting = function() return App.secret() ~= nil and Store.settings().raid.hosting end,

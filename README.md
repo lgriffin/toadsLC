@@ -194,8 +194,11 @@ shift-clicking the item into the command:
   tier, then roll, with their spec, roll and note.
   - **Left-click a row** to vote for that player. **Right-click** it for more: propose them
     with a reason, set their spec if the addon doesn't know it, or (leader) award to them.
-  - When the countdown ends (or the leader presses **Close responses** / types `/tlc close`),
-    the leader awards with one of the buttons: the **vote leader**, the **proposal**, **list
+  - Answers close when the countdown ends, or as soon as everyone in the group has answered.
+    To close early, the leader presses **Last call (10 s)** or types `/tlc close`: raid chat
+    gets "Last call for [item]: 10 s left to answer." and answers close 10 seconds later.
+    Press it again (it reads **Close now**) to close straight away.
+  - Once answers close, the list's pick goes to the council and the leader awards with one of the buttons: the **vote leader**, the **proposal**, **list
     says** (the addon's pick), the **highest roll**, **Award to…** (anyone, with a reason) or
     **No award**. `/tlc award` does the same as "list says" from chat.
   - If the top rolls tie, press **Re-roll tied** or type `/tlc reroll`: only the tied players
@@ -332,6 +335,12 @@ You answer in the loot window and run the council frame, `/tlc award`, `/tlc rer
 - `/tlc sim drop [boss | raid | item]` records the kill's drops on the loot list instead of
   opening them, to practise the loot list: run it for a few bosses, then start each item from
   `/tlc loot` and the fake raid answers it.
+- `/tlc sim raider [boss | raid | item] [seconds]` (**Practise as a raider** on the
+  Practice page) shows only what a raider sees: answer each item as it opens with BiS,
+  Upgrade, OffSpec or Pass. There's no council window; Toadmaster votes and hands each item out.
+- `/tlc sim officer [boss | raid | item]` (**Practise as LC officer**) puts the kill's drops on
+  the council **Loot** page, which opens without a raid password while the practice runs.
+  Announce them, give a last call, vote and award while the fake raid answers.
 - `/tlc sim stop` ends it and clears the simulated sessions and loot list items, for the
   party too.
 
@@ -390,7 +399,7 @@ To test the real thing with five players in a dungeon, follow
 | `/tlc trade done <name>` / `on` / `off` | whoever holds the loot | mark a winner's items handed over; turn the trade filling on or off |
 | `/tlc announce` | leader / whoever holds the loot | show the award and trade lines and the winner's whisper |
 | `/tlc announce award` / `trade` / `whisper` `<text>` / `on` / `off` / `reset` | leader / whoever holds the loot | reword a line with placeholders, turn it on or off, or go back to the default |
-| `/tlc close` | leader | close responses on the last session early |
+| `/tlc close` | leader | last call on the last session: answers close in 10 s (again: close now) |
 | `/tlc award` | leader | award the last session to who the list says |
 | `/tlc award <name> [reason]` | leader | award to someone else, recorded as an override |
 | `/tlc reroll` | leader | re-roll the tied players only (15 s) |
@@ -402,6 +411,8 @@ To test the real thing with five players in a dungeon, follow
 | `/tlc export clear` | leader | mark the exported sessions as sent |
 | `/tlc sim [boss \| raid \| item] [seconds]` | anyone, solo or party lead | practice with a fake boss kill |
 | `/tlc sim drop [boss \| raid \| item]` | anyone, solo or party lead | a fake kill whose drops only go on the loot list |
+| `/tlc sim raider [boss \| raid \| item] [seconds]` | anyone, solo or party lead | practise as a raider: answer each item |
+| `/tlc sim officer [boss \| raid \| item]` | anyone, solo or party lead | practise as an LC officer from the Loot page |
 | `/tlc sim stop` | anyone | end the practice |
 
 ## Troubleshooting
