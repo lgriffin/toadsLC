@@ -62,8 +62,8 @@ tooltip lines. It only loads on the TBC Classic client.
 `/tlc` on its own, or the minimap button, opens one window with its pages down the left side.
 Everything the slash commands do has a button there; the commands still work as shortcuts.
 
-- **Raider** (everyone): **Rolls** lists tonight's loot, where each item is, and what you
-  answered. When an item is announced the answer window pops up as before.
+- **Raider** (everyone): **Rolls** lists tonight's loot, where each item is, what you
+  answered and your roll. When an item is announced the answer window pops up as before.
 - **Loot council** (locked): the council pages stay hidden until this character has tonight's
   raid password. On the **Unlock** page the raid leader types a password and presses
   **Begin raid**; officers type the same one and press **Join as officer** (the same as
@@ -172,8 +172,9 @@ start until it closes. An item nobody was awarded can be started again.
 **The whole pool at once.** **Start all** (or `/tlc loot all`) opens a council session for every
 waiting item together and posts one raid warning plus the numbered list, instead of a line per
 item. Raiders get one loot window with a row per item and BiS / Upgrade / OffSpec / Pass on each; answered
-items drop off the window. The window stays open 60 seconds plus 15 per item (up to 10
-minutes). Each button press also rolls, and the leader's addon matches a raider's rolls to the
+items move to the bottom with your answer and roll. There is no timer: the items stay open
+until the council gives a **Last call** (each item then closes 10 seconds later) or everyone in
+the group has answered. Each button press also rolls, and the leader's addon matches a raider's rolls to the
 items they pressed, in order. A bare `/roll` doesn't count while several items are open (it
 can't tell which item it's for), so raiders without the addon have to wait for items started
 one at a time. The council frame steps through the items with **<** and **>**, and each is
@@ -194,6 +195,8 @@ shift-clicking the item into the command:
   tier, then roll, with their spec, roll and note.
   - **Left-click a row** to vote for that player. **Right-click** it for more: propose them
     with a reason, set their spec if the addon doesn't know it, or (leader) award to them.
+  - One item takes answers for 15 seconds. Officers change that under **Answer time** on the
+    Raid & council page, or with `/tlc timer <10-120>`; a number after the item overrides it.
   - Answers close when the countdown ends, or as soon as everyone in the group has answered.
     To close early, the leader presses **Last call (10 s)** or types `/tlc close`: raid chat
     gets "Last call for [item]: 10 s left to answer." and answers close 10 seconds later.

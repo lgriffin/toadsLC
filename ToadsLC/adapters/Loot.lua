@@ -190,13 +190,11 @@ end
 
 Loot.ALL_MAX = 20 -- items opened at once by /tlc loot all
 
--- allSeconds(n): how long the window stays open for n items at once
-function Loot.allSeconds(n) return math.min(600, 60 + 15 * n) end
-
--- startAll(seconds): open a council session for every item still to hand out, all at once,
--- announced in one go. Raiders answer each item in one window; their button rolls are matched
--- to the items they pressed, so a bare /roll does not count while several are open.
-function Loot.startAll(seconds)
+-- startAll(): open a council session for every item still to hand out, all at once, announced
+-- in one go, with no timer: they take answers until the council gives a last call (or everyone
+-- has answered). Raiders answer each item in one window; their button rolls are matched to the
+-- items they pressed, so a bare /roll does not count while several are open.
+function Loot.startAll()
   local Chat = ns.Chat
   if not ns.Roster.canLead() then Chat.print("You need raid lead or assist to start loot."); return end
   local todo = {}
@@ -204,20 +202,19 @@ function Loot.startAll(seconds)
     if LootList.startable(e) and #todo < Loot.ALL_MAX then todo[#todo + 1] = e end
   end
   if #todo == 0 then Chat.print("Nothing on the loot list is waiting."); return end
-  if #todo == 1 then return Loot.start(Loot.list:numberOf(todo[1]), "session", seconds) end
+  if #todo == 1 then return Loot.start(Loot.list:numberOf(todo[1]), "session") end
   local busy = ns.App.registry:rolling()
   if busy then
     Chat.print(busy.itemName .. " is still taking rolls; let it close (or /tlc close) first.")
     return
   end
-  seconds = seconds or Loot.allSeconds(#todo)
   local parts, sim = {}, true
   for _, e in ipairs(todo) do
     parts[#parts + 1] = string.format("%d. %s", Loot.list:numberOf(e), Loot.linkOf(e))
     if not e.sim then sim = false end
   end
-  local head = string.format("[ToadsLC] Loot council: %d items open for %d s. Answer each in the Toads LC window"
-    .. " (BiS / Upgrade / OffSpec / Pass); while several are open a bare /roll doesn't count.", #todo, seconds)
+  local head = string.format("[ToadsLC] Loot council: %d items open until the council calls time. Answer each in"
+    .. " the Toads LC window (BiS / Upgrade / OffSpec / Pass); while several are open a bare /roll doesn't count.", #todo)
   if sim then
     Chat.print("[sim] " .. head:gsub("^%[ToadsLC%] ", "") .. " " .. table.concat(parts, " "))
   else
@@ -225,7 +222,7 @@ function Loot.startAll(seconds)
     for _, line in ipairs(lines(parts)) do Chat.say(line) end
   end
   for _, e in ipairs(todo) do
-    if e.sim then ns.Sim.openEntry(e, seconds, true) else ns.App.open(nil, seconds, "session", e, true) end
+    if e.sim then ns.Sim.openEntry(e, nil, true, true) else ns.App.open(nil, nil, "session", e, true, true) end
   end
 end
 

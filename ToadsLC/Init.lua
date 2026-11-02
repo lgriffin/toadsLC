@@ -128,9 +128,11 @@ function App.parseItem(text)
   return itemId, name, link or ("[" .. name .. "]")
 end
 
--- open(itemText, seconds, mode [, entry [, quiet]]) -> session: entry is a loot list entry, whose
--- item, zone and boss are used; quiet leaves the raid chat line to the caller (/tlc loot all)
-function App.open(itemText, seconds, mode, entry, quiet)
+-- open(itemText, seconds, mode [, entry [, quiet [, untimed]]]) -> session: entry is a loot list
+-- entry, whose item, zone and boss are used; quiet leaves the raid chat line to the caller
+-- (/tlc loot all); untimed keeps it open until the council's last call (the whole pool at once).
+-- A single item takes answers for the officers' setting (itemSeconds, 15 s by default).
+function App.open(itemText, seconds, mode, entry, quiet, untimed)
   if not Roster.canLead() then
     Chat.print("You need raid lead or assist to start a " .. mode .. ".")
     return
@@ -156,7 +158,7 @@ function App.open(itemText, seconds, mode, entry, quiet)
     boss = entry and entry.boss ~= "" and entry.boss or lastBoss,
     council = mode == "session" and Roster.council() or {},
     rules = rules, mode = mode,
-    seconds = seconds or (mode == "roll" and Store.settings().rollSeconds) or rules.sessionSeconds,
+    seconds = seconds or Store.settings().itemSeconds or rules.sessionSeconds, untimed = untimed,
     priorityVersion = pdb.version,
   })
   send(outs)

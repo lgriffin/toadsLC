@@ -39,6 +39,7 @@ Sim.RAIDERS = {
   { name = "Fenhopper", class = "Paladin", spec = "Paladin:Holy" },
 }
 Sim.SECONDS = 30
+Sim.UNTIMED_WINDOW = 20 -- how long the fake raid takes to answer an item with no timer
 
 local NOTES = { "", "", "", "BiS", "upgrade", "small upgrade", "for my off-spec set", "please :)" }
 local QUALITY_COLOR = { [3] = "ff0070dd", [4] = "ffa335ee", [5] = "ffff8000" }
@@ -278,14 +279,23 @@ local function open(job)
     itemId = it[1], itemName = it[2], itemLink = linkFor(it),
     item = item or fakeItem(it),
     zone = job.zone, boss = job.boss, council = council,
-    rules = pdb.rules or {}, mode = "session", seconds = job.seconds,
+    rules = pdb.rules or {}, mode = "session", seconds = job.seconds, untimed = job.untimed,
     priorityVersion = item and pdb.version or nil,
   })
   App.send(outs)
   if not job.quiet then App.announce(s, s:openLine()) end
   ns.Loot.opened(s, job.entry)
   if not item then ns.Chat.print("[sim] " .. it[2] .. " is not on your list; using a made-up priority.") end
-  local window = math.max(2, math.floor(job.seconds * 0.6))
+  local window = job.untimed and Sim.UNTIMED_WINDOW or math.max(2, math.floor(job.seconds * 0.6))
+  if job.untimed and Sim.role == "raider" then
+    -- no timer on the whole pool: the fake officer calls time once the fake raid has answered
+    after(Sim.UNTIMED_WINDOW + 5, function()
+      if s.phase == "open" then
+        ns.Chat.print(string.format("[sim] %s gives a last call for %s.", Sim.OFFICER, it[2]))
+        ns.App.send(ns.App.registry:finalCall(s.id))
+      end
+    end)
+  end
   for _, r in ipairs(Sim.RAIDERS) do answer(s, r, window) end
 end
 
@@ -410,7 +420,9 @@ function Sim.start(query, seconds, role)
   Sim.role = role
   local entries = record(zone, boss, items)
   for i, it in ipairs(items) do
-    queue[#queue + 1] = { item = it, zone = zone, boss = boss, seconds = seconds or Sim.SECONDS, entry = entries[i] }
+    -- raider practice opens the whole pool at once, untimed, as Announce all does
+    queue[#queue + 1] = { item = it, zone = zone, boss = boss, seconds = seconds or Sim.SECONDS, entry = entries[i],
+                          untimed = role == "raider" and #items > 1 or nil }
   end
   local names = {}
   for i, it in ipairs(items) do names[i] = it[2] end
@@ -457,14 +469,16 @@ end
 
 -- openEntry(entry, seconds, quiet): a simulated loot list entry, started from /tlc loot;
 -- quiet when /tlc loot all announces the lot in one go
-function Sim.openEntry(e, seconds, quiet)
+-- openEntry(entry, seconds, quiet, untimed): untimed when Announce all opens the whole pool
+function Sim.openEntry(e, seconds, quiet, untimed)
   if not Sim.active then ns.Chat.print("[sim] The simulation was stopped; /tlc sim drop again."); return end
   if not checks(seconds) then return end
   local it = { e.itemId, e.name, 4 }
   for _, d in ipairs(ns.RaidLoot) do
     for _, x in ipairs(d.items) do if x[1] == e.itemId then it = x end end
   end
-  open({ item = it, zone = e.zone, boss = e.boss, seconds = seconds or Sim.SECONDS, entry = e, quiet = quiet })
+  open({ item = it, zone = e.zone, boss = e.boss, seconds = seconds or ns.Store.settings().itemSeconds or Sim.SECONDS,
+         entry = e, quiet = quiet, untimed = untimed })
 end
 
 function Sim.stop()

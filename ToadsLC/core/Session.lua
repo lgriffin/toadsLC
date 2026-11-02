@@ -20,6 +20,10 @@ local ipairs, pairs, strformat = ipairs, pairs, string.format
 
 Session.REROLL_SECONDS = 15
 Session.FINAL_SECONDS = 10 -- the last call when the council closes an item early
+-- An untimed item (the whole pool at once) stays open until the council gives a last call or
+-- everyone has answered; this long, at most. Older clients are told WIRE_MAX_SECONDS instead.
+Session.UNTIMED_SECONDS = 12 * 3600
+Session.WIRE_MAX_SECONDS = 600
 
 local function copyList(t)
   local out = {}
@@ -41,7 +45,7 @@ local function un(v) if v == Codec.null then return nil end return v end
 ---------------------------------------------------------------------------
 
 -- new{ id?, itemId, itemName, itemLink?, item?, zone?, boss?, leader, council, rules,
---      mode = "session" | "roll", seconds?, now, priorityVersion? }
+--      mode = "session" | "roll", seconds?, untimed?, now, priorityVersion? }
 function Session.new(o)
   local rules = Resolver.rules(o.rules)
   local s = setmetatable({
@@ -58,7 +62,8 @@ function Session.new(o)
     mode = o.mode or "session",
     priorityVersion = o.priorityVersion,
     openedAt = o.now,
-    closesAt = o.now + (o.seconds or rules.sessionSeconds),
+    closesAt = o.now + (o.untimed and Session.UNTIMED_SECONDS or o.seconds or rules.sessionSeconds),
+    untimed = o.untimed and true or nil,
     closedAt = nil,
     phase = "open", -- open (taking responses) -> voting -> done
     candidates = {},
@@ -77,6 +82,13 @@ function Session:isCouncil(name) return self:isLeader(name) or contains(self.cou
 function Session:timeLeft(now)
   if self.phase ~= "open" then return 0 end
   return math.max(0, self.closesAt - now)
+end
+
+-- countdown(now) -> seconds left, or nil while an untimed item has no last call running
+function Session:countdown(now)
+  if self.phase ~= "open" then return 0 end
+  if self.untimed and not self.finalCall then return nil end
+  return self:timeLeft(now)
 end
 
 function Session:entryFor(player)
@@ -498,6 +510,7 @@ function Session:stateMsg(now)
           boss = self.boss, leader = self.leader, council = self.council, rules = self.rules,
           mode = self.mode, priorityVersion = self.priorityVersion },
     oa = self.openedAt, left = self:timeLeft(now), ca = self.closedAt, ph = self.phase,
+    nt = self.untimed, fc = self.finalCall,
     cands = cands, passed = passed, votes = votes, sq = seqs, prop = self.proposal, restrict = restrict,
     cw = self.computedWinner, cb = self.computedBy, hr = self.listRoll,
     aw = self.phase == "done" and { p = self.awardedTo, by = self.awardedBy, via = self.awardedVia,
@@ -512,6 +525,8 @@ function Session.fromState(m, item, now)
                           council = o.council, rules = o.rules, mode = o.mode,
                           priorityVersion = un(o.priorityVersion), now = m.oa, seconds = 0 })
   s.closesAt = now + (m.left or 0)
+  s.untimed = m.nt == true or nil
+  s.finalCall = un(m.fc)
   s.version = m.v or 0
   s.closedAt = un(m.ca)
   s.phase = m.ph
@@ -741,8 +756,8 @@ function Registry:open(o)
   self:add(s)
   self:changed(s, "SESSION_OPEN")
   local msg = { t = "SESSION_OPEN", s = s.id, it = s.itemId, nm = s.itemName, lk = s.itemLink, z = s.zone,
-                b = s.boss, co = s.council, sec = s.closesAt - s.openedAt, oa = s.openedAt, md = s.mode,
-                pv = s.priorityVersion, ru = s.rules }
+                b = s.boss, co = s.council, sec = math.min(s.closesAt - s.openedAt, Session.WIRE_MAX_SECONDS),
+                nt = s.untimed, oa = s.openedAt, md = s.mode, pv = s.priorityVersion, ru = s.rules }
   return out({}, msg), s
 end
 
@@ -953,7 +968,7 @@ local KINDS = {
 -- field -> kind; a trailing "?" makes it optional (absent or null)
 local FIELDS = {
   SESSION_OPEN = { s = "str", it = "int?", nm = "str", lk = "str?", z = "str?", b = "str?", co = "names",
-                   sec = "int", oa = "int?", md = "str?", pv = "str?", ru = "tbl?", v = "int?" },
+                   sec = "int", nt = "bool?", oa = "int?", md = "str?", pv = "str?", ru = "tbl?", v = "int?" },
   RSP = { s = "str", r = "str", n = "str?", c = "str?", sp = "str?" },
   RESPONSE = { s = "str", k = "int?", p = "str", c = "str?", sp = "str?", r = "str", n = "str?", ro = "int?",
                mx = "int?", ig = "str?", v = "int?" },
@@ -968,7 +983,7 @@ local FIELDS = {
   HELLO = {},
   WELCOME = {},
   MISMATCH = {},
-  STATE = { s = "str", v = "int?", o = "tbl", oa = "int", left = "num?", ca = "int?", ph = "str",
+  STATE = { s = "str", v = "int?", o = "tbl", oa = "int", left = "num?", ca = "int?", ph = "str", nt = "bool?", fc = "int?",
             cands = "tbl?", passed = "names?", votes = "tbl?", sq = "tbl?", prop = "tbl?", restrict = "names?",
             cw = "str?", cb = "str?", hr = "str?", aw = "tbl?" },
 }
@@ -1092,6 +1107,7 @@ function Registry:handle(m, sender, trusted, signed)
     -- an open we cannot verify makes us a viewer, never council
     local s = Session.new({ id = m.s, itemId = m.it, itemName = m.nm, itemLink = m.lk, zone = m.z, boss = m.b,
                             leader = sender, council = trusted and m.co or {}, rules = m.ru, mode = m.md, seconds = m.sec,
+                            untimed = m.nt == true,
                             priorityVersion = m.pv, now = self:now(),
                             item = self.ctx.item(m.it, m.nm) })
     s.openedAt = m.oa or s.openedAt

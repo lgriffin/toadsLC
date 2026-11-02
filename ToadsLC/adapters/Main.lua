@@ -228,10 +228,10 @@ function Main.statusOf(e)
   if e.status == "open" then
     if not s then return BLUE, "awaiting rolls" end
     local _, total = Main.missingAnswers(s)
-    if total > 0 then
-      return BLUE, string.format("awaiting rolls: %d of %d in, %d s", answered(s), total, s:timeLeft(now()))
-    end
-    return BLUE, string.format("awaiting rolls: %d in, %d s", answered(s), s:timeLeft(now()))
+    local left = s:countdown(now())
+    local time = left and string.format(", %d s", left) or ""
+    if total > 0 then return BLUE, string.format("awaiting rolls: %d of %d in%s", answered(s), total, time) end
+    return BLUE, string.format("awaiting rolls: %d in%s", answered(s), time)
   end
   if e.status == "voting" then
     if not s then return BLUE, "council deciding" end
@@ -402,7 +402,8 @@ page("rolls", {
     p.list = list(p, {
       top = 76,
       cols = { { key = "item", title = "Item", icon = true }, { key = "boss", title = "Boss", w = 110 },
-               { key = "status", title = "Status", w = 150 }, { key = "mine", title = "Your answer", w = 90 } },
+               { key = "status", title = "Status", w = 150 }, { key = "mine", title = "Your answer", w = 90 },
+               { key = "roll", title = "Your roll", w = 60 } },
       click = function(e)
         local s = e.session and reg():get(e.session)
         if s and s.phase == "open" and not s.myResponse then ns.Frames.showCandidate() end
@@ -427,6 +428,9 @@ page("rolls", {
       if mine then row.cells.mine:SetText(RESPONSE[mine] or mine)
       elseif s and s.phase == "open" then row.cells.mine:SetText(colourText(AMBER, "not answered"))
       else row.cells.mine:SetText(colourText(GREY, "-")) end
+      local mineE = s and s:entryFor(me())
+      row.cells.roll:SetText(mineE and mineE.roll and tostring(mineE.roll)
+        or colourText(GREY, mine and mine ~= "pass" and "…" or "-"))
     end, "Nothing has dropped yet tonight. Items appear here as the raid leader loots them.")
   end,
 })
@@ -678,8 +682,9 @@ local function buildLootDetail(p)
     local s = d.session
     local missing = s and Main.missingAnswers(s)
     if not missing or #missing == 0 then return end
-    ns.App.announce(s, string.format("[ToadsLC] Still to answer for %s (%d s left): %s.", s.itemLink or s.itemName,
-      s:timeLeft(now()), table.concat(missing, ", ")))
+    local left = s:countdown(now())
+    ns.App.announce(s, string.format("[ToadsLC] Still to answer for %s%s: %s.", s.itemLink or s.itemName,
+      left and string.format(" (%d s left)", left) or "", table.concat(missing, ", ")))
   end, "Call out missing", "Posts the names still to answer this item in raid chat, with the time left."), 120)
   d.remove = sized(button(d, "Remove…", 80, function()
     confirm("Take this item off the loot list?", function() ns.Loot.remove(entryN()); p.detail = nil end)
@@ -902,11 +907,18 @@ page("raid", {
       "Gives raiders a last call: answers close in 10 seconds, announced in raid chat. Press again to close straight away."), 120)
     p.rerollLast = sized(button(p, "Re-roll tied", 100, function() ns.App.rerollLast() end), 100)
     p.undoLast = sized(button(p, "Undo award", 90, function() ns.App.undoLast() end), 90)
+    heading(p, -300, "Answer time")
+    p.itemSec = slider("ToadsLCItemSecondsSlider", p, 4, -330, "One item", 10, 120, 5,
+      function() return ns.Store.settings().itemSeconds or 15 end,
+      function(v) ns.Store.settings().itemSeconds = v end, "%d s")
+    p.itemSecHelp = para(p, -360, colourText(GREY, "How long raiders have to answer one announced item. "
+      .. "Announce all has no timer: the items stay open until you give a last call or everyone has answered."))
     p.councilWin = sized(button(p, "Council window", 120, function()
       if not ns.Frames.showCouncil() then ns.Chat.print("No council session to show.") end
     end), 120)
   end,
   refresh = function(p)
+    p.itemSec.sync()
     local secret, raid = ns.App.secret(), ns.Store.settings().raid
     p.password:SetText(secret and string.format("Set (%s), fingerprint %s. Every officer should see the same fingerprint.",
       raid.hosting and "you lead" or "joined", colourText(GREEN, secret.fingerprint)) or colourText(GREY, "None."))
@@ -1209,8 +1221,8 @@ local function guard(def, step, ...)
       .. "Please send this line to whoever looks after Toads LC. The other pages still work."))
     p.failText:Show()
   end
-  if not reported[def.failed] then
-    reported[def.failed] = true
+  if not reported[def.key .. def.failed] then
+    reported[def.key .. def.failed] = true
     ns.Chat.print("Toads LC: the " .. (def.nav or def.key) .. " page failed to " .. def.failed)
     local handler = geterrorhandler and geterrorhandler()
     if handler then pcall(handler, "ToadsLC " .. def.key .. " page, " .. def.failed) end
