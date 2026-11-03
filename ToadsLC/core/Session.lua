@@ -1190,12 +1190,17 @@ function Registry:handle(m, sender, trusted, signed)
   if m.t == "HELLO" then
     if not (self.ctx.hosting and self.ctx.hosting()) then return {} end
     self.joined = self.joined or {}
-    self.joined[nameKey(sender)] = { name = sender, at = self:now(), ok = trusted }
+    local k = nameKey(sender)
+    local was = self.joined[k]
+    self.joined[k] = { name = sender, at = self:now(), ok = trusted }
     if trusted then
       self:notice("joined", sender)
       self:councilChanged()
-      -- the welcome, then the whole list to every officer
-      return out(out({}, { t = "WELCOME" }, "WHISPER", sender), self:councilInMsg())
+      -- the welcome, then the list: to every officer when it changed, else just to this one
+      -- (a roll call is answered by everyone already in, and must not flood the send queue)
+      local msgs = out({}, { t = "WELCOME" }, "WHISPER", sender)
+      if was and was.ok then return out(msgs, self:councilInMsg(), "WHISPER", sender) end
+      return out(msgs, self:councilInMsg())
     end
     self:councilChanged()
     -- tell the joiner (and ourselves), but not more than once a minute per name
