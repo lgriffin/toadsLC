@@ -23,20 +23,16 @@ Main.TRADE_WINDOW = 2 * 3600 -- raid loot can be traded to the raid for two hour
 local main
 local pages, order = {}, {}
 local current
--- "Lock" in the side bar hides the council pages again until the password is typed; kept per
--- character, so a /reload doesn't lift it
-local function isLocked() return ns.Store.layout().councilLocked == true end
-local function setLocked(v) ns.Store.layout().councilLocked = v or nil end
 
 local function reg() return ns.App.registry end
 local function now() return ns.App.now() end
 local function me() return ns.Roster.me() end
 
--- unlocked(): this character typed tonight's raid password and has not locked the window since
--- (or is practising as an LC officer with /tlc sim officer, which needs no password)
+-- unlocked(): this character began the raid or joined the council tonight (or is practising
+-- as an LC officer with /tlc sim officer, which needs no password)
 function Main.unlocked()
   if ns.Sim and ns.Sim.practisingOfficer and ns.Sim.practisingOfficer() then return true end
-  return ns.App.secret() ~= nil and not isLocked()
+  return ns.App.secret() ~= nil
 end
 
 ---------------------------------------------------------------------------
@@ -105,7 +101,17 @@ end
 -- slider(name, parent, x, y, label, min, max, step, get, set, format): a labelled slider; set runs
 -- as it moves. The stock template finds its Low/High/Text labels by the slider's global name.
 local function slider(name, parent, x, y, label, min, max, step, get, set, format)
-  local sl = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+  local ok, sl = pcall(CreateFrame, "Slider", name, parent, "OptionsSliderTemplate")
+  if not ok then
+    -- a client without the template: say so in place of the slider, and keep the page working
+    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPLEFT", x, y)
+    local stub = { sync = function()
+      local fmt = type(format) == "function" and format or function(v) return string.format(format, v) end
+      fs:SetText(label .. ": " .. fmt(get()) .. " (this client has no slider; use the slash command)")
+    end }
+    return setmetatable(stub, { __index = function() return function() end end }) -- SetScript etc.: no-ops
+  end
   sl:SetPoint("TOPLEFT", x, y)
   sl:SetWidth(220)
   sl:SetMinMaxValues(min, max)
@@ -436,42 +442,51 @@ page("rolls", {
 })
 
 ---------------------------------------------------------------------------
--- Unlock: the raid password, for the council pages
+-- Join council: Begin raid (the raid leader) or Join council (everyone else), once a night
 ---------------------------------------------------------------------------
 
+-- leads(): this character runs the raid (raid leader, or not in a group); everyone else Joins
+local function leads() return not IsInGroup() or UnitIsGroupLeader("player") end
+
 page("unlock", {
-  nav = "Unlock", section = "gate", title = "Unlock the loot council",
-  about = "The council pages need tonight's raid password. The raid leader picks one and presses Begin raid; "
-    .. "officers type the same password and press Join. Raiders don't need it: their rolls work without it.",
+  nav = "Join council", section = "gate", title = "Join the loot council",
+  about = "The council pages need tonight's raid password. The raid leader types one and presses Begin raid; "
+    .. "officers type the same one and press Join council. The leader sees each officer join. "
+    .. "Raiders don't need it: their rolls work without it.",
   build = function(p)
     text(p, "GameFontNormalSmall", 0, -76, "Raid password")
     p.box = input(p, 220, true)
     p.box:SetPoint("TOPLEFT", 6, -92)
-    p.unlock = sized(button(p, "Unlock", 90, function() Main.unlock(p.box:GetText()) end,
-      "Unlock", "Opens the council pages again: type the password you joined with tonight."), 90)
-    p.join = sized(button(p, "Join as officer", 120, function() Main.join(p.box:GetText(), false) end,
-      "Join as officer", "Use the password the raid leader gave the council (not in raid chat). Your votes count once it matches theirs."), 120)
-    p.begin = sized(button(p, "Begin raid", 100, function() Main.join(p.box:GetText(), true) end,
-      "Begin raid (raid leader)", "Pick tonight's password: council traffic is signed and encrypted with it. Give it to the officers."), 100)
-    p.forget = sized(button(p, "Use another password", 150, function()
-      confirm("Forget tonight's raid password on this character? You'll be out of the council's traffic until you Join again.",
-        function() ns.App.endRaid(); setLocked(false); Main.refresh() end)
+    p.nameLabel = text(p, "GameFontNormalSmall", 240, -76, "Raid name (officers see it when they join)")
+    p.nameBox = input(p, 220)
+    p.nameBox:SetPoint("TOPLEFT", 246, -92)
+    p.go = sized(button(p, "Join council", 120, function() Main.enter(p.box:GetText(), p.nameBox:GetText()) end,
+      function() return p.goLabel end, function() return p.goTip end), 120)
+    p.begin = sized(button(p, "Begin raid instead", 140, function()
+      Main.join(p.box:GetText(), true, p.nameBox:GetText())
     end,
-      "Use another password", "Forgets tonight's password on this character, so you can Join or Begin with a new one."), 150)
-    p.box:SetScript("OnEnterPressed", function()
-      if ns.App.secret() then Main.unlock(p.box:GetText()) else Main.join(p.box:GetText(), false) end
-    end)
+      "Begin raid instead", "For an assist who runs the loot instead of the raid leader. Only one character per raid "
+      .. "should Begin: everyone else Joins, or the leader can't see them."), 140)
+    p.box:SetScript("OnEnterPressed", function() Main.enter(p.box:GetText(), p.nameBox:GetText()) end)
     p.msg = para(p, -150)
   end,
   refresh = function(p)
-    local set = ns.App.secret() ~= nil
-    p.unlock:SetShown(set)
-    p.forget:SetShown(set)
-    p.join:SetShown(not set)
-    p.begin:SetShown(not set and lead())
-    flow({ p.unlock, p.join, p.begin, p.forget }, p, -118)
+    local label, tip
+    if leads() then
+      label, tip = "Begin raid", "You lead the raid: this sets tonight's password. Give it to the officers "
+        .. "(not in raid chat); you'll see each one join."
+    else
+      label, tip = "Join council", "Use the password the raid leader gave the council. The leader answers within "
+        .. "a few seconds and you both see it in chat."
+    end
+    p.go:SetText(label)
+    p.goLabel, p.goTip = label, tip
+    p.begin:SetShown(not leads() and lead())
+    p.nameLabel:SetShown(leads() or lead())
+    p.nameBox:SetShown(leads() or lead())
+    flow({ p.go, p.begin }, p, -118)
   end,
-  show = function(p) p.box:SetText(""); p.msg:SetText("") end,
+  show = function(p) p.box:SetText(""); p.nameBox:SetText(""); p.msg:SetText("") end,
 })
 
 local function gateMsg(s, c)
@@ -479,35 +494,20 @@ local function gateMsg(s, c)
   if p and p.msg then p.msg:SetText(colourText(c or RED, s)) end
 end
 
--- unlock(password): the council pages again, once the password matches tonight's
-function Main.unlock(password)
-  local raid = ns.Store.settings().raid
-  if not ns.App.secret() or not raid then gateMsg("No raid password is set on this character yet: Join or Begin."); return false end
-  if ns.Crypto.hex(ns.Wire.keyFromPassword(password or "")) ~= raid.key then
-    gateMsg("That isn't the password you joined with tonight.")
-    return false
-  end
-  setLocked(false)
-  Main.go("loot")
-  return true
-end
+-- enter(password): the one button on the password page: Begin raid for the raid leader,
+-- Join council for everyone else
+function Main.enter(password, name) return Main.join(password, leads(), name) end
 
--- join(password, hosting): /tlc begin or /tlc join from the window
-function Main.join(password, hosting)
+-- join(password, hosting, name): /tlc begin or /tlc join from the window
+function Main.join(password, hosting, name)
   if not password or #password < 6 then
     gateMsg("Use a password of at least 6 characters, shared with the council only (not raid chat).")
     return false
   end
-  if hosting then ns.App.beginRaid(password) else ns.App.joinRaid(password) end
+  if hosting then ns.App.beginRaid(password, name) else ns.App.joinRaid(password) end
   if not ns.App.secret() then return false end
-  setLocked(false)
-  Main.go("loot")
+  Main.go("raid") -- where the council list fills in as officers join
   return true
-end
-
-function Main.lock()
-  setLocked(true)
-  Main.go("rolls")
 end
 
 ---------------------------------------------------------------------------
@@ -876,8 +876,11 @@ end
 page("raid", {
   nav = "Raid & council", section = "council", title = "Raid & council",
   build = function(p)
-    heading(p, -28, "Raid password")
+    heading(p, -28, "Tonight's raid")
     p.password = para(p, -46)
+    p.rename = sized(button(p, "Rename…", 80, function()
+      ask("Call tonight's raid:", function(t) ns.App.nameRaid(t) end)
+    end, "Rename the raid", "Officers see the new name straight away."), 80)
     p.endRaid = sized(button(p, "End raid", 90, function()
       confirm("Forget tonight's raid password on this character?", function() ns.App.endRaid(); Main.go("rolls") end)
     end, "End raid", "Forgets the raid password here: council traffic is unsigned again and these pages lock."), 90)
@@ -885,6 +888,8 @@ page("raid", {
       "Prints the priority list's date, sessions waiting for export and the password fingerprint."), 110)
     p.versions = sized(button(p, "Check addon versions", 150, function() if ns.Version then ns.Version.check() end end,
       "Check addon versions", "Asks the raid who has Toads LC and which version; the answers print in chat after a few seconds."), 150)
+    p.checkIn = sized(button(p, "Check who's in", 120, function() ns.App.checkCouncil() end,
+      function() return p.checkTitle end, function() return p.checkTip end), 120)
     heading(p, -104, "Council")
     p.council = para(p, -122)
     heading(p, -158, "Items by hand")
@@ -919,15 +924,23 @@ page("raid", {
   end,
   refresh = function(p)
     p.itemSec.sync()
-    local secret, raid = ns.App.secret(), ns.Store.settings().raid
-    p.password:SetText(secret and string.format("Set (%s), fingerprint %s. Every officer should see the same fingerprint.",
-      raid.hosting and "you lead" or "joined", colourText(GREEN, secret.fingerprint)) or colourText(GREY, "None."))
+    local secret, raid = ns.App.secret(), ns.Store.raid()
+    local rn = ns.App.raidName()
+    p.password:SetText(secret and string.format("%s (%s), password fingerprint %s. Every officer should see the same one.",
+      rn and colourText(GREEN, rn) or "Raid name not heard from the leader yet",
+      raid.hosting and "you lead" or "joined", colourText(GREEN, secret.fingerprint))
+      or colourText(GREY, "You haven't begun or joined a raid on this character."))
     p.versions:SetShown(ns.Version ~= nil and ns.Version.check ~= nil)
-    flow({ p.endRaid, p.status, p.versions }, p, -64)
-    local pdb = ns.Store.priorities()
-    local from = pdb and pdb.council and #pdb.council > 0 and "from the priority list" or "the raid leader and assists"
-    local names = ns.Roster.council()
-    p.council:SetText(string.format("%s (%s).", #names > 0 and table.concat(names, ", ") or "nobody yet", from))
+    local hosting = secret ~= nil and raid.hosting
+    p.checkIn:SetText(hosting and "Check who's in" or "Check again")
+    p.checkTitle = hosting and "Check who's in" or "Check again"
+    p.checkTip = hosting and "Asks every officer's Toads LC to check in with tonight's password. "
+      .. "The list below fills in as they answer." or "Checks your password with the raid leader again."
+    p.checkIn:SetShown(secret ~= nil)
+    p.rename:SetShown(hosting)
+    p.endRaid:SetShown(secret ~= nil)
+    flow({ p.endRaid, p.checkIn, p.rename, p.status, p.versions }, p, -64)
+    p.council:SetText(Main.councilText())
     flow({ p.session, p.roll }, p, -176)
     p.session:SetShown(lead()); p.roll:SetShown(lead())
     local s = lastLed()
@@ -948,6 +961,48 @@ page("raid", {
     flow({ p.awardList, p.awardTo, p.closeLast, p.rerollLast, p.undoLast, p.councilWin }, p, -258)
   end,
 })
+
+-- councilText(): the council and who has joined with tonight's password. The leader keeps
+-- the list and shares it (COUNCIL_IN), so every officer sees the same names.
+function Main.councilText()
+  local pdb = ns.Store.priorities()
+  local from = pdb and pdb.council and #pdb.council > 0 and "council from the priority list"
+    or "council: the raid leader and assists"
+  local names = ns.Roster.council()
+  local secret, raid, r = ns.App.secret(), ns.Store.raid(), reg()
+  if not secret then
+    return string.format("%s (%s). %s", #names > 0 and table.concat(names, ", ") or "Nobody yet", from,
+      colourText(GREY, "Begin raid or Join council to see who's in."))
+  end
+  local cl = r:councilList(raid.hosting)
+  local status = ""
+  if not raid.hosting then
+    if r.mismatchWith then
+      status = " " .. colourText(RED, r.mismatchWith .. " has a different password. Check it with them, End raid "
+        .. "and Join again.")
+    elseif r.helloAt and not r.confirmedBy then
+      status = " " .. colourText(GREY, "Checking your password with the raid leader…")
+    elseif not r.confirmedBy then
+      status = " " .. colourText(RED, "No raid leader has confirmed your password yet. Check again once they've "
+        .. "pressed Begin raid.")
+    end
+  end
+  local seen, parts, count = {}, {}, 0
+  local function add(name, how)
+    local k = Priority.nameKey(name)
+    if seen[k] then return end
+    seen[k] = true
+    if how == "lead" then parts[#parts + 1] = colourText(GREEN, name .. " (leads)")
+    elseif how == "in" then parts[#parts + 1] = colourText(GREEN, name .. " (in)"); count = count + 1
+    elseif how == "bad" then parts[#parts + 1] = colourText(RED, name .. " (wrong password)")
+    else parts[#parts + 1] = colourText(GREY, name .. " (not joined)") end
+  end
+  if cl.leader then add(cl.leader, "lead") end
+  for _, n in ipairs(names) do add(n, cl.state[Priority.nameKey(n)]) end
+  for _, n in ipairs(cl.names) do add(n, cl.state[Priority.nameKey(n)]) end
+  return string.format("%s. %d officer%s in (%s).%s", table.concat(parts, ", "), count, count == 1 and "" or "s",
+    from, status)
+end
 
 ---------------------------------------------------------------------------
 -- Loot mule: who gets the greens and blues (adapters/Mule.lua, when it is installed)
@@ -1260,7 +1315,7 @@ local function refreshNav()
       h:SetPoint("TOPLEFT", 8, y)
       local practice = ns.Sim.practisingOfficer and ns.Sim.practisingOfficer()
       local lockText = sec.key == "council" and (practice and colourText(BLUE, " (practice)")
-        or (Main.unlocked() and colourText(GREEN, " (unlocked)") or colourText(GREY, " (locked)"))) or ""
+        or (Main.unlocked() and colourText(GREEN, " (joined)") or colourText(GREY, " (join to see)"))) or ""
       h:SetText(sec.title .. lockText)
       y = y - 18
     else
@@ -1282,7 +1337,6 @@ local function refreshNav()
     end
     y = y - 6
   end
-  main.lockBtn:SetShown(Main.unlocked())
 end
 
 function Main.build()
@@ -1317,9 +1371,6 @@ function Main.build()
   end
   main.navs = {}
   for _, key in ipairs(order) do main.navs[key] = navButton(key, pages[key].nav) end
-  main.lockBtn = button(main.nav, "Lock", 70, function() Main.lock() end, "Lock the council pages",
-    "Hides the council pages until the raid password is typed again. Council traffic keeps working.")
-  main.lockBtn:SetPoint("BOTTOMLEFT", 8, 8)
 
   main.content = CreateFrame("Frame", nil, main)
   main.content:SetPoint("TOPLEFT", NAV_W + 20, -32)

@@ -64,11 +64,12 @@ Everything the slash commands do has a button there; the commands still work as 
 
 - **Raider** (everyone): **Rolls** lists tonight's loot, where each item is, what you
   answered and your roll. When an item is announced the answer window pops up as before.
-- **Loot council** (locked): the council pages stay hidden until this character has tonight's
-  raid password. On the **Unlock** page the raid leader types a password and presses
-  **Begin raid**; officers type the same one and press **Join as officer** (the same as
-  `/tlc begin` and `/tlc join`). **Lock** at the bottom of the side bar hides them again; type
-  the password to unlock.
+- **Loot council**: the council pages appear once this character has begun or joined tonight's
+  raid. On the **Join council** page the raid leader types a password and a raid name and
+  presses **Begin raid**; officers type the same password and press **Join council** (the
+  same as `/tlc begin` and `/tlc join`). Each character joins for itself, alts included.
+  **Raid & council** then shows the raid's name and every officer as *in*, *not joined* or
+  *wrong password*, the same list for the leader and every officer.
   - **Loot**, the main page: every item tonight with its boss, when it dropped, the two hours
     it can be traded counting down, and its status (waiting to announce, awaiting rolls,
     missing votes, awarded). **Announce** on a row opens that item; **Announce all** opens
@@ -304,13 +305,18 @@ brackets, the whole comma-separated part goes with it: `({response}, rolled {rol
 The password stops anyone outside the council from reading votes and notes, and stops a
 tampered client from voting as an officer. Set it each raid night:
 
-- **Raid leader:** `/tlc begin <password>`. At least 6 characters; spaces are fine.
-- **Officers:** `/tlc join <password>`. You'll be told *"Raid password matches
-  <leader>'s"*, or that it doesn't match, in which case check it and join again.
+- **Raid leader:** **Begin raid** with a password and a raid name, or `/tlc begin <password>`
+  then `/tlc name <raid name>`. At least 6 characters; spaces are fine. Only one character
+  begins: everyone else joins, even assists.
+- **Officers:** **Join council**, or `/tlc join <password>`. You'll be told *"Welcome to
+  <raid name>!"*, and the leader sees *"<you> joined the council"*. If it doesn't match, both
+  of you are told: check it, **End raid**, and join again.
+- **Check who's in** on Raid & council (or `/tlc who`) asks every officer's addon to check in
+  again; officers who joined before the leader began are picked up when the leader begins.
 - Share it in officer chat or Discord, **never in raid chat**.
 - `/tlc status` shows a **fingerprint**: every officer should see the same one as the leader.
 - It is forgotten after 12 hours, or straight away with `/tlc end`. Only a scrambled key is
-  saved, never the password itself.
+  saved, never the password itself, and only for the character that typed it.
 
 Raiders never need the password: they still get the loot window and see the award. An
 officer who forgot to join sees sessions as a viewer only, their votes are ignored, and the
@@ -387,6 +393,8 @@ To test the real thing with five players in a dungeon, follow
 | `/tlc import undo` | officers | go back to the previous list |
 | `/tlc begin <password>` | raid leader | set tonight's raid password and lead the council |
 | `/tlc join <password>` | officers | join the council with the leader's password |
+| `/tlc name <raid name>` | raid leader | name tonight's raid; officers see it when they join |
+| `/tlc who` | leader, officers | check who has joined the council |
 | `/tlc end` | leader, officers | forget the raid password |
 | `/tlc session <item> [seconds]` | leader or assist | open a council session for an item |
 | `/tlc roll <item> [seconds]` | leader or assist | plain priority roll in raid chat |

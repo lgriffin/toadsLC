@@ -36,42 +36,58 @@ describe("main window", function()
     assert.matches("/tlc begin", table.concat(W.printed, "\n"))
   end)
 
-  it("unlocks with Begin raid, locks again, and only reopens on the same password", function()
+  it("begins the raid from one button for the raid leader, named, with no lock", function()
     Main.go("loot")
     local p = page("unlock")
+    assert.are.equal("Begin raid", p.go:GetText()) -- the raid leader begins; everyone else joins
     p.box:SetText("short")
-    click(p.begin)
+    click(p.go)
     assert.is_false(Main.unlocked())
     assert.matches("at least 6 characters", p.msg:GetText())
     p.box:SetText(PASSWORD)
-    click(p.begin)
+    p.nameBox:SetText("Gruul Tuesday")
+    click(p.go)
     assert.is_true(Main.unlocked())
-    assert.are.equal("loot", Main.current())
-    assert.is_not_nil(W.ns.App.secret()) -- the same password /tlc begin sets
-
-    click(_G.ToadsLCMainFrame.lockBtn)
-    assert.is_false(Main.unlocked())
-    assert.are.equal("rolls", Main.current())
-    assert.is_not_nil(W.ns.App.secret()) -- council traffic keeps working while the window is locked
-    Main.go("loot")
-    p.box:SetText("wrong-password")
-    click(p.unlock)
-    assert.is_false(Main.unlocked())
-    assert.matches("isn't the password", p.msg:GetText())
-    p.box:SetText(PASSWORD)
-    click(p.unlock)
-    assert.is_true(Main.unlocked())
+    assert.are.equal("raid", Main.current()) -- where the council fills in
+    assert.are.equal("Gruul Tuesday", W.ns.App.raidName())
+    assert.matches("Gruul Tuesday", page("raid").password:GetText())
+    assert.matches("Poohtank %(leads%)", page("raid").council:GetText())
+    assert.is_nil(_G.ToadsLCMainFrame.lockBtn)
   end)
 
-  it("stays locked after a reload until the password is typed", function()
-    W.slash("begin " .. PASSWORD)
-    W.slash("")
-    Main.lock()
-    local db, charDb = _G.ToadsLCDB, _G.ToadsLCCharDB
-    W.install({ db = db, charDb = charDb })
+  it("shows an officer Join council, and the raid name and leader once confirmed", function()
+    W.install({ group = { { name = "Poohtank", class = "PALADIN", leader = true },
+                          { name = "Hadur", class = "SHAMAN", assist = true } }, me = "Hadur" })
     W.load()
     W.fire("PLAYER_LOGIN")
-    assert.is_not_nil(W.ns.App.secret())
+    Main = W.ns.Main
+    W.slash("")
+    Main.go("loot")
+    local p = page("unlock")
+    assert.are.equal("Join council", p.go:GetText())
+    assert.is_true(p.begin:IsShown()) -- an assist can still begin instead
+    p.box:SetText(PASSWORD)
+    click(p.go)
+    assert.is_true(Main.unlocked())
+    assert.is_false(W.ns.Store.raid().hosting)
+    assert.matches("Checking your password", page("raid").council:GetText())
+    -- the leader answers
+    local r = W.ns.App.registry
+    r:handle({ t = "WELCOME" }, "Poohtank", true, true)
+    r:handle({ t = "COUNCIL_IN", names = { "Hadur" }, rn = "Gruul Tuesday" }, "Poohtank", true, true)
+    assert.matches("Welcome to Gruul Tuesday!", table.concat(W.printed, "\n"))
+    Main.refresh()
+    assert.matches("Gruul Tuesday", page("raid").password:GetText())
+    assert.matches("Poohtank %(leads%).*Hadur %(in%)", page("raid").council:GetText())
+  end)
+
+  it("keeps the raid password per character, so an alt on the same account joins for itself", function()
+    W.slash("begin " .. PASSWORD)
+    local db = _G.ToadsLCDB
+    W.install({ db = db }) -- another character on the same account: its own ToadsLCCharDB
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    assert.is_nil(W.ns.App.secret())
     assert.is_false(W.ns.Main.unlocked())
   end)
 
@@ -249,24 +265,28 @@ describe("main window", function()
   end)
 
   it("keeps the council pages when one page breaks on the live client", function()
-    -- a template the client doesn't have: the settings page can't build its sliders
+    -- a template the client doesn't have: sliders fall back to text and the pages still build
     local create = _G.CreateFrame
     _G.CreateFrame = function(kind, ...)
       if kind == "Slider" then error("Couldn't find inherited node \"OptionsSliderTemplate\"") end
       return create(kind, ...)
     end
+    local alpha = W.ns.Frames.alpha
+    W.ns.Frames.alpha = function() error("settings broke") end -- and one page that really breaks
     W.slash("")
-    _G.CreateFrame = create
     local p = page("unlock")
     Main.go("loot")
     p.box:SetText(PASSWORD)
-    click(p.begin)
+    click(p.go)
+    _G.CreateFrame = create
     assert.is_true(Main.unlocked())
-    assert.are.equal("loot", Main.current())
+    assert.are.equal("raid", Main.current())
+    assert.is_nil(page("raid").failText)
     assert.is_true(_G.ToadsLCMainFrame.navs.trades:IsShown())
     Main.go("settings")
     assert.matches("didn't load", page("settings").failText:GetText())
     assert.matches("Settings page failed", table.concat(W.printed, "\n"))
+    W.ns.Frames.alpha = alpha
     Main.go("loot")
     assert.are.equal("loot", Main.current())
   end)

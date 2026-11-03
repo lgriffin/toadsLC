@@ -577,7 +577,9 @@ describe("Session with a raid password", function()
     local heard = {}
     for name, c in pairs(raid.clients) do
       c.reg.ctx.hosting = function() return name == "Poohtank" end
-      c.reg.ctx.notify = function(kind, who) heard[#heard + 1] = name .. ":" .. kind .. ":" .. (who or "") end
+      c.reg.ctx.notify = function(kind, who)
+        if kind ~= "council" then heard[#heard + 1] = name .. ":" .. kind .. ":" .. (who or "") end
+      end
     end
     return heard
   end
@@ -591,7 +593,56 @@ describe("Session with a raid password", function()
     raid.act("Gally", "hello")
     raid.act("Gally", "hello") -- told once a minute at most
     table.sort(heard)
-    assert.are.same({ "Gally:mismatch_self:Poohtank", "Hadur:welcome:Poohtank", "Poohtank:mismatch:Gally" }, heard)
+    assert.are.same({ "Gally:mismatch_self:Poohtank", "Hadur:welcome:Poohtank", "Hadur:welcome_raid:Poohtank",
+                      "Poohtank:joined:Hadur", "Poohtank:mismatch:Gally" }, heard)
+  end)
+
+  it("shows everyone the same list of officers in, and welcomes each to the named raid", function()
+    local secrets = keyed({ "Poohtank", "Hadur", "Anasazi" }, "frog-pond-42")
+    secrets.Gally = ns.Wire.secret(ns.Wire.keyFromPassword("typo", 10))
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Anasazi", "Gally" }, priorities, secrets)
+    local heard = listen(raid)
+    raid.clients.Poohtank.reg.ctx.raidName = function() return "Gruul Tuesday" end
+    local raidOf = {}
+    for name, c in pairs(raid.clients) do
+      local notify = c.reg.ctx.notify
+      c.reg.ctx.notify = function(kind, who, rn) if rn then raidOf[name] = rn end; notify(kind, who) end
+    end
+    raid.act("Hadur", "hello")
+    raid.act("Anasazi", "hello")
+    raid.act("Gally", "hello")
+    local lead = raid.clients.Poohtank.reg:councilList(true)
+    assert.are.equal("Poohtank", lead.leader)
+    assert.are.same({ "Anasazi", "Gally", "Hadur" }, lead.names)
+    assert.are.same({ anasazi = "in", gally = "bad", hadur = "in" }, lead.state)
+    -- Hadur joined first and still sees Anasazi join after
+    local hadur = raid.clients.Hadur.reg:councilList(false)
+    assert.are.equal("Poohtank", hadur.leader)
+    assert.are.same({ "Anasazi", "Hadur" }, hadur.names)
+    assert.are.equal("Gruul Tuesday", raidOf.Hadur)
+    assert.is_nil(raidOf.Gally) -- the wrong password gets no welcome, and can't read the list
+    assert.is_nil(raid.clients.Gally.reg.councilIn)
+    local welcomes = 0
+    for _, h in ipairs(heard) do if h == "Hadur:welcome_raid:Poohtank" then welcomes = welcomes + 1 end end
+    assert.are.equal(1, welcomes) -- once, not again for every officer after
+  end)
+
+  it("finds officers who joined before the leader began, with a roll call", function()
+    local secrets = keyed({ "Poohtank", "Hadur" }, "frog-pond-42")
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Raider" }, priorities, secrets)
+    local heard = listen(raid)
+    raid.clients.Poohtank.reg.ctx.hosting = function() return false end
+    raid.act("Hadur", "hello") -- nobody leads yet
+    raid.clock = raid.clock + 10
+    raid.act("Hadur", "tick")
+    assert.is_nil(raid.clients.Hadur.reg.confirmedBy)
+    raid.clients.Poohtank.reg.ctx.hosting = function() return true end
+    raid.act("Poohtank", "rollcall") -- Begin raid
+    assert.are.equal("Poohtank", raid.clients.Hadur.reg.confirmedBy.name)
+    assert.are.same({ "Hadur" }, raid.clients.Poohtank.reg:councilList(true).names)
+    assert.is_nil(raid.clients.Raider.reg.helloAt) -- no password: a roll call is not for raiders
+    assert.are.same({ "Hadur:noanswer:", "Poohtank:joined:Hadur", "Hadur:welcome:Poohtank",
+                      "Hadur:welcome_raid:Poohtank" }, heard)
   end)
 
   it("says so when no raid leader answers /tlc join", function()
@@ -628,7 +679,7 @@ describe("Session with a raid password", function()
     assert.is_true(s:isCouncil("Gally"))
     assert.are.equal("secret note", s:entryFor("Anasazi").note)
     assert.are.equal("Anasazi", s.votes.hadur)
-    assert.are.same({ "Gally:welcome:Poohtank" }, heard)
+    assert.are.same({ "Poohtank:joined:Gally", "Gally:welcome:Poohtank", "Gally:welcome_raid:Poohtank" }, heard)
   end)
 
   it("tells an officer without the password to /tlc join when a protected session opens", function()
