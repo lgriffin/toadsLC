@@ -23,6 +23,7 @@ describe("the loot mule", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     W.ns.App.import(sample)
+    W.ns.Store.settings().lootSelf = false -- the council's items stay on the corpse unless a test says
   end
 
   before_each(function() login() end)
@@ -33,6 +34,38 @@ describe("the loot mule", function()
     local name, list = W.ns.Mule.get()
     assert.is_nil(name)
     assert.are.same({ 2, 3 }, list)
+  end)
+
+  it("knows the master looter from the client's IsMasterLooter, not a \"master\" loot method string", function()
+    assert.is_true(W.ns.Mule.masterLooter())
+    _G.IsMasterLooter = nil -- an older client: C_PartyInfo.GetLootMethod's number says it
+    assert.is_true(W.ns.Mule.masterLooter())
+  end)
+
+  it("takes the council's items into the master looter's bags, and the greens and blues to the mule", function()
+    W.ns.Store.settings().lootSelf = nil -- on by default
+    W.slash("mule Gally")
+    W.loot(CORPSE)
+    assert.are.same({ [1] = "Poohtank", [2] = "Gally", [3] = "Gally" }, W.given)
+    assert.matches("Looted for the council: .*Dragonspine Trophy", printed())
+    assert.are.equal(1, #W.ns.Loot.list.entries) -- recorded before it left the corpse
+  end)
+
+  it("takes the council's items with no mule named", function()
+    W.ns.Store.settings().lootSelf = nil
+    W.loot(CORPSE)
+    assert.are.same({ [1] = "Poohtank" }, W.given)
+  end)
+
+  it("leaves the council's items on the corpse with /tlc mule self off, or when not recording loot", function()
+    W.ns.Store.settings().lootSelf = nil
+    W.slash("mule self off")
+    W.loot(CORPSE)
+    assert.are.same({}, W.given)
+    W.slash("mule self on")
+    W.slash("loot auto off")
+    W.loot(CORPSE)
+    assert.are.same({}, W.given)
   end)
 
   it("gives greens and blues to the mule and leaves the council's items", function()

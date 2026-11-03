@@ -12,7 +12,7 @@ local Main = {}
 ns.Main = Main
 
 local U = ns.Frames.ui
-local Priority, LootList = ns.Priority, ns.LootList
+local Priority = ns.Priority
 local AMBER, GREEN, GREY, RED, BLUE = U.AMBER, U.GREEN, U.GREY, U.RED, U.BLUE
 local T = U.THEME
 local colourText = U.colourText
@@ -180,20 +180,26 @@ local function tradeLeft(at, id)
   return c, string.format("%dm", math.ceil(left / 60))
 end
 
-local RESPONSE = { bis = "BiS", main = "Upgrade", offspec = "Off-spec", pass = "Pass" }
+local RESPONSE = { bis = "BiS", main = "Main", offspec = "OS", pass = "Pass" }
 
 local function answerText(s, e)
   if e.ignored then return colourText(GREY, e.ignored) end
-  if e.max == s.rules.offspecRollMax or e.response == "offspec" then return colourText(BLUE, "Off-spec") end
-  return RESPONSE[e.response] or "Upgrade"
+  return ns.Frames.responseText(s, e)
 end
 
--- councilOf(s) -> the leader and council, once each
+-- councilOf(s) -> the leader and council, once each, and (with a raid password) every officer
+-- the raid's who's-in list has, so "still to vote" names an officer who hasn't voted yet
 local function councilOf(s)
   local out, seen = {}, {}
-  for _, n in ipairs({ s.leader, unpack(s.council or {}) }) do
-    local k = Priority.nameKey(n)
-    if not seen[k] then seen[k] = true; out[#out + 1] = n end
+  local function add(n)
+    local k = n and Priority.nameKey(n)
+    if k and k ~= "" and not seen[k] then seen[k] = true; out[#out + 1] = n end
+  end
+  for _, n in ipairs({ s.leader, unpack(s.council or {}) }) do add(n) end
+  local raid = ns.App.secret() and ns.Store.raid()
+  if raid and s.mode == "session" and not ns.Sim.isSim(s) then
+    local list = reg():councilList(raid.hosting)
+    for _, n in ipairs(list.names) do if list.state[Priority.nameKey(n)] == "in" then add(n) end end
   end
   return out
 end
@@ -227,25 +233,42 @@ local function answered(s)
   return n
 end
 
--- statusOf(entry) -> colour, text: where a loot list item is, with the council's detail
+-- phaseOf(entry) -> status, winner: from this client's copy of the item's session when it has
+-- one (the freshest), else from the loot list
+function Main.phaseOf(e)
+  local s = e.session and reg():get(e.session)
+  if s then
+    if s.phase == "done" then return s.awardedTo and "awarded" or "none", s.awardedTo end
+    return s.phase, nil
+  end
+  return e.status, e.winner
+end
+
+-- statusOf(entry) -> colour, text: where a loot list item is, in the order it goes through:
+-- waiting -> taking answers -> council deciding -> awarded to <name>
 function Main.statusOf(e)
   local s = e.session and reg():get(e.session)
-  if e.status == "waiting" then return AMBER, "waiting to announce" end
-  if e.status == "open" then
-    if not s then return BLUE, "awaiting rolls" end
+  local status, winner = Main.phaseOf(e)
+  if status == "waiting" then return AMBER, "waiting to open" end
+  if status == "open" then
+    if not s then return BLUE, "taking answers" end
     local _, total = Main.missingAnswers(s)
     local left = s:countdown(now())
     local time = left and string.format(", %d s", left) or ""
-    if total > 0 then return BLUE, string.format("awaiting rolls: %d of %d in%s", answered(s), total, time) end
-    return BLUE, string.format("awaiting rolls: %d in%s", answered(s), time)
+    local votes = 0
+    for _ in pairs(s.votes) do votes = votes + 1 end
+    local v = votes > 0 and string.format(", %d vote%s", votes, votes == 1 and "" or "s") or ""
+    if total > 0 then return BLUE, string.format("taking answers: %d of %d%s%s", answered(s), total, v, time) end
+    return BLUE, string.format("taking answers: %d in%s%s", answered(s), v, time)
   end
-  if e.status == "voting" then
+  if status == "voting" then
     if not s then return BLUE, "council deciding" end
+    if s.proposal then return AMBER, "council deciding: " .. s.proposal.player .. " proposed" end
     local missing, total = Main.missingVotes(s)
-    if #missing > 0 then return AMBER, string.format("missing votes: %d of %d", #missing, total) end
-    return BLUE, "votes in: ready to award"
+    if #missing > 0 then return AMBER, string.format("council deciding: %d of %d voted", total - #missing, total) end
+    return BLUE, "council deciding: all voted"
   end
-  if e.status == "awarded" then return GREEN, "awarded to " .. (e.winner or "?") end
+  if status == "awarded" then return GREEN, "awarded to " .. (winner or "?") end
   return GREY, "not awarded"
 end
 
@@ -381,7 +404,8 @@ local function page(key, def)
   return def
 end
 
-local function lead() return ns.Roster.canLead() end
+-- lead(): this character hands out loot (the raid leader who began the raid)
+local function lead() return ns.App.canStart() end
 local BUSY = "Another item is taking answers. Wait for it to close."
 
 ---------------------------------------------------------------------------
@@ -392,27 +416,43 @@ local function waitingForMe()
   local out = {}
   for _, id in ipairs(reg().order) do
     local s = reg():get(id)
-    if s.mode == "session" and s.phase == "open" and not s.myResponse and s:timeLeft(now()) > 0 then out[#out + 1] = s end
+    if s.mode == "session" and s.phase == "open" and not ns.Frames.myAnswer(s) and s:timeLeft(now()) > 0 then
+      out[#out + 1] = s
+    end
   end
   return out
 end
 
+local ANSWERS = { { "bis", "BiS", 40 }, { "main", "Main", 46 }, { "offspec", "OS", 36 }, { "pass", "Pass", 44 } }
+
 page("rolls", {
-  nav = "Rolls", section = "raider", title = "Your rolls",
-  about = "Tonight's loot, and what you answered. When the council announces an item, a window pops up for your answer.",
+  nav = "Tonight's loot", section = "raider", title = "Tonight's loot",
+  about = "Answer each item as it drops: BiS, Main, OS or Pass. The council sees your answer, votes, and the raid "
+    .. "leader hands it out. Change lets you answer again while it's open.",
   build = function(p)
-    p.waiting = text(p, "GameFontHighlight", 0, -46)
-    p.answer = button(p, "Answer now", 110, function() ns.Frames.showCandidate() end,
-      "Answer now", "Opens the window with your answer buttons for every item still waiting for you.")
-    p.answer:SetPoint("TOPRIGHT", 0, -42)
+    p.waiting = text(p, "GameFontHighlight", 0, -50)
+    p.changing = {}
     p.list = list(p, {
-      top = 76,
-      cols = { { key = "item", title = "Item", icon = true }, { key = "boss", title = "Boss", w = 110 },
-               { key = "status", title = "Status", w = 150 }, { key = "mine", title = "Your answer", w = 90 },
-               { key = "roll", title = "Your roll", w = 60 } },
-      click = function(e)
-        local s = e.session and reg():get(e.session)
-        if s and s.phase == "open" and not s.myResponse then ns.Frames.showCandidate() end
+      top = 76, rowH = 22,
+      cols = { { key = "item", title = "Item", icon = true }, { key = "boss", title = "Boss", w = 90 },
+               { key = "status", title = "Status", w = 150 }, { key = "mine", title = "Your answer", w = 74 },
+               { key = "act", title = "", w = 186 } },
+      build = function(row)
+        row.answers = {}
+        local x = 0
+        for i, a in ipairs(ANSWERS) do
+          local b = button(row, a[2], a[3], function()
+            local s = row.session
+            if s then p.changing[s.id] = nil; ns.App.respond(s.id, a[1], "") end
+          end)
+          b:SetPoint("RIGHT", row, "RIGHT", -(186 - x - a[3]) - 2, 0)
+          x = x + a[3] + 2
+          row.answers[i] = b
+        end
+        row.change = button(row, "Change", 64, function()
+          if row.session then p.changing[row.session.id] = true; Main.refresh() end
+        end, "Change your answer", "Pick again while the item is still taking answers.")
+        row.change:SetPoint("RIGHT", row, "RIGHT", -2, 0)
       end,
     })
   end,
@@ -422,21 +462,22 @@ page("rolls", {
     p.waiting:SetText(waiting > 0
       and colourText(AMBER, string.format("%d item%s waiting for your answer.", waiting, waiting == 1 and " is" or "s are"))
       or colourText(GREY, "Nothing is waiting for your answer."))
-    p.answer:SetShown(waiting > 0)
     p.list.fill(ns.Loot.list.entries, function(row, e)
       setItem(row, e.itemId, ns.Loot.linkOf(e))
       row.cells.item:SetText(ns.Loot.linkOf(e))
       row.cells.boss:SetText((e.sim and "[sim] " or "") .. (e.boss ~= "" and e.boss or "?"))
-      local c = e.status == "awarded" and GREEN or (e.status == "waiting" and AMBER or (e.status == "none" and GREY or BLUE))
-      row.cells.status:SetText(colourText(c, LootList.label(e)))
+      local sc, st = Main.statusOf(e)
+      row.cells.status:SetText(colourText(sc, st))
       local s = e.session and reg():get(e.session)
-      local mine = s and s.myResponse
-      if mine then row.cells.mine:SetText(RESPONSE[mine] or mine)
-      elseif s and s.phase == "open" then row.cells.mine:SetText(colourText(AMBER, "not answered"))
+      row.session = s
+      local mine = s and ns.Frames.myAnswer(s)
+      local open = s and s.mode == "session" and s.phase == "open" or false
+      if mine then row.cells.mine:SetText(colourText(GREEN, RESPONSE[mine] or mine))
+      elseif open then row.cells.mine:SetText(colourText(AMBER, "not answered"))
       else row.cells.mine:SetText(colourText(GREY, "-")) end
-      local mineE = s and s:entryFor(me())
-      row.cells.roll:SetText(mineE and mineE.roll and tostring(mineE.roll)
-        or colourText(GREY, mine and mine ~= "pass" and "…" or "-"))
+      local asking = open and (not mine or p.changing[s.id]) or false
+      for _, b in ipairs(row.answers) do b:SetShown(asking) end
+      row.change:SetShown(open and mine ~= nil and not p.changing[s.id] or false)
     end, "Nothing has dropped yet tonight. Items appear here as the raid leader loots them.")
   end,
 })
@@ -525,27 +566,26 @@ local function buildLootList(p)
   p.listView = v
   v.summary = text(v, "GameFontHighlightSmall", 0, -24)
   v.list = list(v, {
-    top = 46, bottom = 66, rowH = 22,
+    top = 46, bottom = 88, rowH = 22,
     cols = { { key = "num", title = "#", w = 22 }, { key = "item", title = "Item", icon = true },
              { key = "boss", title = "Boss", w = 90 }, { key = "dropped", title = "Dropped", w = 46 },
-             { key = "trade", title = "Trade left", w = 62 }, { key = "status", title = "Status", w = 160 },
-             { key = "act", title = "", w = 122 } },
-    click = function(e) p.detail = e.key; Main.refresh() end,
+             { key = "trade", title = "Trade left", w = 62 }, { key = "status", title = "Status", w = 196 },
+             { key = "act", title = "", w = 66 } },
+    click = function(e, which, row)
+      if which == "RightButton" then return Main.lootMenu(e, row) end
+      p.detail = e.key; Main.refresh()
+    end,
     build = function(row)
-      row.announce = button(row, "Announce", 76, function()
+      row.announce = button(row, "Open", 60, function()
         if row.item then ns.Loot.start(entryNumber(row.item), "session") end
-      end, "Announce", "Opens this item to the raid: it is announced in raid chat, raiders answer, the council votes.")
-      row.announce:SetPoint("RIGHT", -46, 0)
-      row.roll = button(row, "Roll", 44, function()
-        if row.item then ns.Loot.start(entryNumber(row.item), "roll") end
-      end, "Plain roll", "Announced in raid chat and raiders /roll; no council vote. Main spec and priority tier still rank before the roll.")
-      row.roll:SetPoint("LEFT", row.announce, "RIGHT", 0, 0)
+      end, "Open for answers", "Announces this item in raid chat; raiders answer BiS / Main / OS / Pass, the council votes.")
+      row.announce:SetPoint("RIGHT", -4, 0)
     end,
   })
-  v.all = sized(button(v, "Announce all", 110, function() ns.Loot.startAll() end, "Announce all",
-    "Opens every item still to hand out at once, so the whole raid has time to answer and the council time to vote."), 110)
-  v.nextBtn = sized(button(v, "Announce next", 110, function() ns.Loot.startNext("session") end, "Announce next",
-    "Opens the first item still waiting."), 110)
+  v.all = sized(button(v, "Open all", 90, function() ns.Loot.startAll() end, "Open all",
+    "Opens every item still waiting at once, with no timer: raiders answer, the council votes, you award."), 90)
+  v.nextBtn = sized(button(v, "Open next", 90, function() ns.Loot.startNext("session") end, "Open next",
+    "Opens the first item still waiting."), 90)
   v.post = sized(button(v, "List to raid chat", 120, function() ns.Loot.announce() end, "List to raid chat",
     "Posts the items still waiting to raid chat, without opening them, so raiders know what's coming."), 120)
   v.add = sized(button(v, "Add item…", 90, function() ask("Add to the loot list (item link or name):", ns.Loot.add) end,
@@ -555,21 +595,44 @@ local function buildLootList(p)
   local set = ns.Store.settings
   v.auto = checkbox(v, 0, 0, "Record drops when I loot a boss", function() return set().lootAuto ~= false end,
     function(on) set().lootAuto = on end, "As raid leader or assist, opening a corpse puts its epics and priority-list items here.")
+  v.openDrop = checkbox(v, 0, 0, "Open drops for answers as they're looted", function() return set().openOnDrop ~= false end,
+    function(on) set().openOnDrop = on end, "Each new drop opens with no timer, so raiders answer between pulls and the "
+    .. "council's votes build up before you hand it out.")
   v.party = checkbox(v, 0, 0, "Party drops too (5-man practice)", function() return set().lootParty == true end,
     function(on) set().lootParty = on end, "Records party drops, rare and up, when you lead a 5-man.")
   v.auto:ClearAllPoints()
   v.auto:SetPoint("BOTTOMLEFT", 0, 30)
   v.party:ClearAllPoints()
   v.party:SetPoint("BOTTOMLEFT", 230, 30)
+  v.openDrop:ClearAllPoints()
+  v.openDrop:SetPoint("BOTTOMLEFT", 0, 52)
+end
+
+-- lootMenu(entry, row): right-click on a loot row
+function Main.lootMenu(e, row)
+  local n = entryNumber(e)
+  local items = { { text = "Details and votes", func = function()
+    if lootPage.frame then lootPage.frame.detail = e.key end
+    Main.refresh()
+  end } }
+  if lead() then
+    items[#items + 1] = { text = "Reset (waiting again)…", func = function()
+      confirm("Reset " .. e.name .. "? An open item closes with no award, an award is undone.", function() ns.Loot.reset(n) end)
+    end }
+    items[#items + 1] = { text = "Remove from the list…", func = function()
+      confirm("Take " .. e.name .. " off the loot list?", function() ns.Loot.remove(n) end)
+    end }
+  end
+  U.contextMenu(row, items)
 end
 
 local function refreshLootList(p)
   local v = p.listView
   local entries = ns.Loot.list.entries
-  local canLead, busy = lead(), reg():rolling() ~= nil
+  local canLead, busy = lead(), reg():busy() ~= nil
   local counts = { waiting = 0, open = 0, voting = 0, awarded = 0 }
-  for _, e in ipairs(entries) do counts[e.status] = (counts[e.status] or 0) + 1 end
-  v.summary:SetText(#entries == 0 and "" or string.format("%d item%s: %s waiting, %s awaiting rolls, %s with the council, %s awarded.",
+  for _, e in ipairs(entries) do local st = Main.phaseOf(e); counts[st] = (counts[st] or 0) + 1 end
+  v.summary:SetText(#entries == 0 and "" or string.format("%d item%s: %s waiting, %s taking answers, %s with the council, %s awarded.",
     #entries, #entries == 1 and "" or "s", counts.waiting, counts.open, counts.voting, counts.awarded))
   v.list.fill(entries, function(row, e, n)
     setItem(row, e.itemId, ns.Loot.linkOf(e))
@@ -581,15 +644,18 @@ local function refreshLootList(p)
     row.cells.trade:SetText(colourText(tc, tt))
     local sc, st = Main.statusOf(e)
     row.cells.status:SetText(colourText(sc, st))
-    local can = canLead and LootList.startable(e)
+    local status = Main.phaseOf(e)
+    local can = canLead and (status == "waiting" or status == "none")
     row.announce:SetShown(can)
-    row.roll:SetShown(can and not e.sim)
     row.announce:SetEnabled(not busy)
-    row.roll:SetEnabled(not busy)
-    row.announce.disabledWhy, row.roll.disabledWhy = BUSY, BUSY
-  end, "Nothing recorded yet.\nOpen a boss's corpse in a raid and its drops appear here,\nor Add item to put one on by hand.")
+    row.announce.disabledWhy = BUSY
+  end, "Nothing recorded yet.\nOpen a boss's corpse in a raid and its drops appear here,\nor Add item to put one on by hand.\n"
+    .. "Right-click an item to reset it or take it off.")
   local startable = 0
-  for _, e in ipairs(entries) do if LootList.startable(e) then startable = startable + 1 end end
+  for _, e in ipairs(entries) do
+    local st = Main.phaseOf(e)
+    if st == "waiting" or st == "none" then startable = startable + 1 end
+  end
   v.all:SetShown(canLead and startable > 1)
   v.nextBtn:SetShown(canLead and startable > 0)
   v.post:SetShown(canLead and counts.waiting > 0)
@@ -601,6 +667,8 @@ local function refreshLootList(p)
   v.party.sync()
   v.auto:SetShown(canLead)
   v.party:SetShown(canLead)
+  v.openDrop.sync()
+  v.openDrop:SetShown(canLead)
 end
 
 local function detailRows(s)
@@ -643,26 +711,41 @@ local function buildLootDetail(p)
   d.info = para(d, -54)
   d.votes = para(d, -70)
   d.answers = para(d, -86)
+  -- the live poll: every answer, main spec first by the list's priority; click a name to vote for
+  -- them (click another to move your vote), and the leader awards from the row
   d.list = list(d, {
-    top = 112, bottom = 36,
-    cols = { { key = "name", title = "Name", w = 100 }, { key = "spec", title = "Spec", w = 100 },
-             { key = "answer", title = "Answer", w = 70 }, { key = "roll", title = "Roll", w = 40 },
-             { key = "tier", title = "Tier", w = 34 }, { key = "votes", title = "Votes", w = 110 },
-             { key = "note", title = "Note" } },
+    top = 112, bottom = 36, rowH = 20,
+    cols = { { key = "name", title = "Name (click to vote)", w = 130 }, { key = "spec", title = "Spec", w = 90 },
+             { key = "answer", title = "Answer", w = 50 }, { key = "tier", title = "Tier", w = 30 },
+             { key = "votes", title = "Council votes" }, { key = "note", title = "Note", w = 100 },
+             { key = "act", title = "", w = 70 } },
     click = function(e, which, row)
       local s = d.session
       if not s or e.ignored or s.phase == "done" then return end
       if which == "RightButton" then detailMenu(s, e, row) else ns.App.vote(s.id, e.player) end
     end,
+    build = function(row)
+      row.award = button(row, "Award", 66, function()
+        local s, e = d.session, row.item
+        if not s or not e then return end
+        local opts = s:awardOptions()
+        local k = Priority.nameKey(e.player)
+        local function is(n) return n and Priority.nameKey(n) == k end
+        if is(opts.votes) then return ns.App.award(s.id, e.player, "votes") end
+        if is(opts.list or opts.listPriority) then return ns.App.award(s.id, e.player, "list") end
+        if is(opts.proposal) then return ns.App.award(s.id, e.player, "proposal", s.proposal and s.proposal.reason) end
+        ns.Frames.prompt("Award to " .. e.player .. ": reason (it isn't the council's vote or the list's pick)",
+          function(reason) ns.App.award(s.id, e.player, "manual", reason) end)
+      end, "Award", "Hands the item to this raider and announces it in raid chat. Only the raid leader who opened the item can.")
+      row.award:SetPoint("RIGHT", -2, 0)
+    end,
   })
   local function sid() return d.session and d.session.id end
   local function entryN() local e = ns.Loot.list:byKeyOf(p.detail); return e and entryNumber(e) end
-  d.announce = sized(button(d, "Announce", 90, function() ns.Loot.start(entryN(), "session") end, "Announce",
-    "Opens this item to the raid: raiders answer, the council votes."), 90)
-  d.roll = sized(button(d, "Roll", 60, function() ns.Loot.start(entryN(), "roll") end, "Plain roll",
-    "Raiders /roll in raid chat; no council vote."), 60)
-  d.close = sized(button(d, "Last call (10 s)", 120, function() ns.App.close(sid()) end, "Close responses early",
-    "Gives raiders a last call: answers close in 10 seconds, announced in raid chat. Press again to close straight away."), 120)
+  d.announce = sized(button(d, "Open for answers", 120, function() ns.Loot.start(entryN(), "session") end, "Open for answers",
+    "Announces this item in raid chat: raiders answer, the council votes."), 120)
+  d.close = sized(button(d, "Close answers (10 s)", 140, function() ns.App.close(sid()) end, "Close answers",
+    "Council deciding: raiders get a last call in raid chat and answers close in 10 seconds. Press again to close straight away."), 140)
   d.reroll = sized(button(d, "Re-roll tied", 100, function() ns.App.reroll(sid()) end, "Re-roll tied",
     "The players tied at the top roll again."), 100)
   d.award = sized(button(d, "Award", 160, function(self) if self.player then ns.App.award(sid(), self.player, self.via) end end,
@@ -730,52 +813,51 @@ local function refreshLootDetail(p)
     d.list.fill({}, function() end, "")
   else
     local missing, total = Main.missingVotes(s)
-    -- who voted for whom only when the rules show it (votesVisibleTo = "council"); else counts
-    local named = s.rules.votesVisibleTo == "council"
+    -- the council sees who voted for whom
     local voted = {}
     for _, n in ipairs(councilOf(s)) do
       local v = s.votes[Priority.nameKey(n)]
-      if v then voted[#voted + 1] = named and (n .. " (" .. v .. ")") or n end
+      if v then voted[#voted + 1] = n .. " > " .. v end
     end
     local line = string.format("Council votes %d of %d.", total - #missing, total)
-    if #voted > 0 then line = line .. " Voted: " .. table.concat(voted, ", ") .. "." end
+    if #voted > 0 then line = line .. " " .. table.concat(voted, ", ") .. "." end
     if #missing > 0 and s.phase ~= "done" then line = line .. " " .. colourText(AMBER, "Still to vote: " .. table.concat(missing, ", ") .. ".") end
     if s.proposal then line = line .. string.format(" Proposal by %s: %s%s.", s.proposal.by, s.proposal.player,
       s.proposal.reason ~= "" and (" (" .. s.proposal.reason .. ")") or "") end
     d.votes:SetText(line)
     local rows, r = detailRows(s)
-    local counts, myVote = s:voteCounts(), s.votes[Priority.nameKey(me())]
-    local voters = {}
-    for officer, c in pairs(s.votes) do
-      local k = Priority.nameKey(c)
-      voters[k] = voters[k] or {}
-      table.insert(voters[k], (officer:gsub("^%l", string.upper)))
-    end
+    local myVote = s.votes[Priority.nameKey(me())]
+    local voters = ns.Frames.voteTally(s)
+    local leadVotes = 0
+    for _, names in pairs(voters) do leadVotes = math.max(leadVotes, #names) end
+    local canAwardRow = s:isLeader(me()) and s.phase ~= "done"
     d.list.fill(rows, function(row, c)
       local k = Priority.nameKey(c.player)
-      row.cells.name:SetText(c.ignored and colourText(GREY, c.player) or U.classText(c.class, c.player))
+      local mine = myVote and Priority.nameKey(myVote) == k
+      row.cells.name:SetText(c.ignored and colourText(GREY, c.player)
+        or ((mine and colourText(GREEN, "> ") or "") .. U.classText(c.class, c.player)))
       row.cells.spec:SetText(c.spec and Priority.label(c.spec) or ((c.class or "?") .. "?"))
       row.cells.answer:SetText(answerText(s, c))
-      row.cells.roll:SetText(c.roll and tostring(c.roll) or colourText(GREY, "…"))
       row.cells.tier:SetText(not c.ignored and c.tier and tostring(c.tier) or "-")
-      local n = counts[k] or 0
-      local who = n == 0 and "" or (named and table.concat(voters[k] or {}, ", ") or tostring(n))
-      if myVote and Priority.nameKey(myVote) == k then who = colourText(GREEN, who) end
-      row.cells.votes:SetText(who)
+      row.cells.votes:SetText(ns.Frames.tallyText(voters[k], mine))
       local pick = not c.ignored and r.ranked[1] == c and (r.winner == c or not r.winner)
       row.cells.note:SetText((pick and colourText(GREEN, "list pick  ") or "") .. (c.note or ""))
-      if pick then row.bg:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.12) end
-    end, s.phase == "open" and "No answers yet. Raiders appear here, ranked, as they answer." or "Nobody answered for this item.")
+      local n = voters[k] and #voters[k] or 0
+      if n > 0 and n == leadVotes then row.bg:SetColorTexture(BLUE[1], BLUE[2], BLUE[3], 0.14)
+      elseif pick then row.bg:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.12) end
+      row.award:SetShown(canAwardRow and not c.ignored)
+    end, s.phase == "open" and "No answers yet. Raiders appear here, main spec first, as they answer."
+      or "Nobody answered for this item.")
   end
-  local canStart = lead() and LootList.startable(e)
-  local busy = reg():rolling() ~= nil
+  local phase = Main.phaseOf(e)
+  local canStart = lead() and (phase == "waiting" or phase == "none")
+  local busy = reg():busy() ~= nil
   d.announce:SetShown(canStart)
-  d.roll:SetShown(canStart and not e.sim)
-  d.announce:SetEnabled(not busy); d.roll:SetEnabled(not busy)
-  d.announce.disabledWhy, d.roll.disabledWhy = BUSY, BUSY
+  d.announce:SetEnabled(not busy)
+  d.announce.disabledWhy = BUSY
   d.close:SetShown(leader and s.phase == "open" or false)
-  d.close:SetText(s and s:inFinalCall(now()) and "Close now" or "Last call (10 s)")
-  d.reroll:SetShown(leader and s.phase == "voting" and s:result().tie or false)
+  d.close:SetText(s and s:inFinalCall(now()) and "Close now" or "Close answers (10 s)")
+  d.reroll:SetShown(leader and s.mode == "roll" and s.phase == "voting" and s:result().tie or false)
   local opts = s and s:awardOptions() or {}
   -- only the list's pick or the council's votes: a tie, or a list that names nobody, goes to
   -- Re-roll tied, the council window or Award to… (whose reason is recorded)
@@ -791,7 +873,7 @@ local function refreshLootDetail(p)
   d.remove:SetShown(lead())
   local missing = s and s.phase == "open" and Main.missingAnswers(s)
   d.callout:SetShown(missing and #missing > 0 or false)
-  flow({ d.announce, d.roll, d.close, d.callout, d.reroll, d.award, d.awardTo, d.undo, d.window, d.remove }, d, 2)
+  flow({ d.announce, d.close, d.callout, d.reroll, d.award, d.awardTo, d.undo, d.window, d.remove }, d, 2)
   return true
 end
 
@@ -908,7 +990,7 @@ page("raid", {
         ns.Frames.prompt("Reason for awarding " .. name .. ":", function(reason) ns.App.awardLast(name, reason) end)
       end)
     end), 90)
-    p.closeLast = sized(button(p, "Last call (10 s)", 120, function() ns.App.closeLast() end, "Close responses early",
+    p.closeLast = sized(button(p, "Close answers (10 s)", 140, function() ns.App.closeLast() end, "Close answers",
       "Gives raiders a last call: answers close in 10 seconds, announced in raid chat. Press again to close straight away."), 120)
     p.rerollLast = sized(button(p, "Re-roll tied", 100, function() ns.App.rerollLast() end), 100)
     p.undoLast = sized(button(p, "Undo award", 90, function() ns.App.undoLast() end), 90)
@@ -941,8 +1023,8 @@ page("raid", {
     p.endRaid:SetShown(secret ~= nil)
     flow({ p.endRaid, p.checkIn, p.rename, p.status, p.versions }, p, -64)
     p.council:SetText(Main.councilText())
-    flow({ p.session, p.roll }, p, -176)
-    p.session:SetShown(lead()); p.roll:SetShown(lead())
+    flow({ p.session }, p, -176)
+    p.session:SetShown(lead()); p.roll:SetShown(false) -- council items take no rolls
     local s = lastLed()
     if s then
       local where = s.phase == "open" and "taking answers" or (s.phase == "voting" and "with the council"
@@ -953,9 +1035,10 @@ page("raid", {
     end
     p.awardList:SetShown(s ~= nil and s.phase ~= "done")
     p.awardTo:SetShown(s ~= nil and s.phase ~= "done")
+    p.session:SetText("Open an item…")
     p.closeLast:SetShown(s ~= nil and s.phase == "open")
-    p.closeLast:SetText(s and s:inFinalCall(now()) and "Close now" or "Last call (10 s)")
-    p.rerollLast:SetShown(s ~= nil and s.phase == "voting" and s:result().tie or false)
+    p.closeLast:SetText(s and s:inFinalCall(now()) and "Close now" or "Close answers (10 s)")
+    p.rerollLast:SetShown(s ~= nil and s.mode == "roll" and s.phase == "voting" and s:result().tie or false)
     p.undoLast:SetShown(s ~= nil and s.phase == "done")
     p.councilWin:SetShown(true)
     flow({ p.awardList, p.awardTo, p.closeLast, p.rerollLast, p.undoLast, p.councilWin }, p, -258)
@@ -1143,7 +1226,16 @@ page("data", {
       tostring(pdb.exportedAt or "?"):sub(1, 10), pdb.importedBy or "?") or colourText(AMBER, "None imported yet."))
     flow({ p.import, p.undo }, p, -64)
     local _, ids = ns.Store.records(false)
-    p.sessions:SetText(string.format("%d session%s waiting to be sent.", #ids, #ids == 1 and "" or "s"))
+    local since = ns.App.raidStart()
+    local _, tonight = ns.Store.records(false, since)
+    local rn = ns.App.raidName()
+    if since then
+      p.sessions:SetText(string.format("%s: %d session%s waiting to be sent (Export new).%s", rn or "Tonight's raid",
+        #tonight, #tonight == 1 and "" or "s", #ids > #tonight and colourText(GREY, string.format(
+        " %d from before the raid began, in Export all.", #ids - #tonight)) or ""))
+    else
+      p.sessions:SetText(string.format("%d session%s waiting to be sent.", #ids, #ids == 1 and "" or "s"))
+    end
     flow({ p.export, p.exportAll, p.sent }, p, -146)
   end,
 })
@@ -1157,17 +1249,20 @@ page("history", {
   build = function(p)
     p.list = list(p, {
       top = 28,
-      cols = { { key = "item", title = "Item" }, { key = "to", title = "Awarded to", w = 120 }, { key = "why", title = "Override", w = 220 } },
+      cols = { { key = "item", title = "Item", icon = true }, { key = "to", title = "Awarded to", w = 120 },
+               { key = "traded", title = "Traded", w = 90 }, { key = "why", title = "Override", w = 180 } },
     })
   end,
   layout = function(p, w, h) p.list.layout(w, h) end,
   refresh = function(p)
-    local null = ns.Codec.null
-    p.list.fill(ns.App.tonight(), function(row, r)
-      row.cells.item:SetText(r.itemName or "?")
-      row.cells.to:SetText(r.awardedTo ~= null and r.awardedTo or colourText(GREY, "not awarded"))
-      local ov = r.override ~= null and r.override
-      row.cells.why:SetText(ov and (ov.reason or "") or "")
+    p.list.fill(ns.App.awardsTonight(), function(row, r)
+      local link = r.itemId and select(2, GetItemInfo(r.itemId))
+      setItem(row, r.itemId, link)
+      row.cells.item:SetText(link or r.itemName or "?")
+      row.cells.to:SetText(r.awardedTo or colourText(GREY, "not awarded"))
+      row.cells.traded:SetText(not r.awardedTo and "" or (r.traded and colourText(GREEN, "traded")
+        or colourText(AMBER, "to trade")))
+      row.cells.why:SetText(r.reason or "")
     end, "No awards tonight.")
   end,
 })
@@ -1341,7 +1436,7 @@ end
 
 function Main.build()
   main = U.window("ToadsLCMainFrame", "Toads LC", {
-    w = 840, h = 500, minW = 760, minH = 420, maxW = 1500, maxH = 1100,
+    w = 800, h = 460, minW = 760, minH = 400, maxW = 1500, maxH = 1100, point = "LEFT", x = 40, y = 40,
     layout = function(f, w, h)
       f.cw, f.ch = w - NAV_W - 34, h - 44
       for _, key in ipairs(order) do

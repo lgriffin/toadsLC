@@ -36,6 +36,7 @@ describe("trading awards in a fake client", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     W.ns.App.import(sample)
+    W.ns.Store.settings().openOnDrop = false -- each item is handed out by hand, one by one
     W.loot(CORPSE)
   end)
 
@@ -133,7 +134,7 @@ describe("trading awards across a raid", function()
     local leader = W.client({ me = "Poohtank", group = GROUP })
     local looter = W.client({ me = "Hadur", group = GROUP, bags = bags() })
     local all = { leader, looter }
-    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    for _, c in ipairs(all) do c.ns.App.import(sample); c.ns.Store.settings().openOnDrop = false end
     W.deliver(all)
     looter:loot(CORPSE)
     W.deliver(all)

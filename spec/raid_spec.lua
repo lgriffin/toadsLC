@@ -94,22 +94,19 @@ describe("a raid of clients", function()
     end
     local cand = rogue.env.ToadsLCCandidateFrame
     local row = cand.rows[1]
-    assert.are.same({ "BiS", "Upgrade", "OffSpec", "Pass" },
+    assert.are.same({ "BiS", "Main", "OS", "Pass" },
                     { row.bis:GetText(), row.up:GetText(), row.off:GetText(), row.pass:GetText() })
-    assert.is_true(officer.env.ToadsLCCouncilFrame:IsShown())
-    assert.is_falsy(hunter.env.ToadsLCCouncilFrame and hunter.env.ToadsLCCouncilFrame:IsShown())
 
     rogue.ns.App.respond(s.id, "main", "BiS for me")
     warrior.ns.App.respond(s.id, "main")
-    assert.are.same({ 1, 100 }, rogue.rolls[1]) -- the Upgrade button rolls for real
+    assert.are.same({}, rogue.rolls) -- no rolls: the council votes
     W.deliver(all)
-    rollOnLeader("Anasazi rolls 41 (1-100)")
-    rollOnLeader("Gally rolls 97 (1-100)")
+    rollOnLeader("Gally rolls 97 (1-100)") -- a /roll counts for nothing
     W.deliver(all)
     W.tickAll(all, 31)
     W.deliver(all)
     assert.are.equal("voting", s.phase)
-    assert.are.equal("Anasazi", s.computedWinner) -- tier 1 rogue beats tier 2 warrior's 97
+    assert.are.equal("Anasazi", s.computedWinner) -- tier 1 rogue ranks above the tier 2 warrior
 
     local seen = latest(officer)
     assert.are.equal("voting", seen.phase)
@@ -176,9 +173,12 @@ describe("a raid of clients", function()
       hunter.ns.App.respond(s.id, "main", "secret note")
       local found = false
       for _, d in ipairs(W.deliver(all)) do
-        if d.from == hunter then assert.are.same({ "WHISPER", "Poohtank" }, { d.msg.dist, d.msg.target }) end
+        if d.from == hunter then assert.are.same({ "WHISPER", "Poohtank" }, { d.msg.dist, d.msg.target })
+        else -- the leader passes it on to the council sealed
+          assert.is_nil(d.msg.text:find("secret note", 1, true), "a note crossed the wire in clear text")
+          if d.msg.text:find("T1|e|", 1, true) then found = true end
+        end
       end
-      rollOnLeader("Croaker rolls 41 (1-100)")
       W.tickAll(all, 31)
       for _, d in ipairs(W.deliver(all)) do -- the leader passes it on to the council sealed
         assert.is_nil(d.msg.text:find("secret note", 1, true), "a note crossed the wire in clear text")
@@ -209,6 +209,202 @@ describe("a raid of clients", function()
       W.deliver(all)
       assert.is_nil(s.votes.hadur)
     end)
+  end)
+end)
+
+describe("a raid night run the 0.3 way", function()
+  -- Poohtank begins the raid; Hadur and Croaker join with the password (Croaker is not on the
+  -- priority list's council[]); Anasazi and Gally are raiders without it
+  local GRUUL = "Creature-0-1-565-1-19044-1"
+  local leader, officer, joiner, rogue, warrior, all
+  local function sessionOn(c, id) return c.ns.App.registry:get(id) end
+
+  before_each(function()
+    leader = W.client({ me = "Poohtank", group = GROUP })
+    officer = W.client({ me = "Hadur", group = GROUP })
+    joiner = W.client({ me = "Croaker", group = GROUP })
+    rogue = W.client({ me = "Anasazi", group = GROUP })
+    warrior = W.client({ me = "Gally", group = GROUP })
+    all = { leader, officer, joiner, rogue, warrior }
+    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    W.deliver(all)
+    leader:slash("begin frog pond 42")
+    officer:slash("join frog pond 42")
+    W.deliver(all)
+  end)
+
+  local function croakerJoins()
+    joiner:slash("join frog pond 42")
+    W.deliver(all)
+  end
+
+  it("opens each drop for answers as it's looted, and every officer who joined sees the answers and votes", function()
+    croakerJoins()
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local s = latest(leader)
+    assert.is_truthy(s, "the drop opened for answers")
+    assert.is_true(s.untimed)
+    assert.matches("Open for answers: .*Dragonspine Trophy", leader:chatText())
+    assert.are.equal("open", leader.ns.Loot.list.entries[1].status)
+    -- Croaker joined with the password, so they are on this item's council, list or no list
+    assert.is_true(sessionOn(joiner, s.id):isCouncil("Croaker"))
+    assert.is_true(s:isCouncil("Croaker"))
+
+    rogue.ns.App.respond(s.id, "main")
+    warrior.ns.App.respond(s.id, "pass")
+    W.deliver(all)
+    for _, c in ipairs({ officer, joiner }) do
+      local mine = sessionOn(c, s.id)
+      assert.are.equal("main", mine:entryFor("Anasazi").response, c.me)
+      assert.is_true(mine.passed.gally, c.me) -- a pass reaches every officer: not "still to answer"
+    end
+
+    joiner.ns.App.vote(s.id, "Anasazi")
+    joiner.ns.App.propose(s.id, "Anasazi", "needs it most")
+    W.deliver(all)
+    assert.are.equal("Anasazi", s.votes.croaker) -- counted by the leader
+    assert.are.equal("Anasazi", sessionOn(officer, s.id).votes.croaker) -- and seen by the other officer
+    assert.are.equal("Croaker", sessionOn(officer, s.id).proposal.by)
+    assert.are.equal("Anasazi", s.proposal.player)
+  end)
+
+  it("lets only the raid leader who began the raid open and award loot", function()
+    _G.UnitIsGroupAssistant = _G.UnitIsGroupAssistant -- Hadur is an assist with the password
+    officer:slash("loot add [Dragonspine Trophy]")
+    assert.matches("Only the raid leader who began the raid", officer:printedText())
+    officer:slash("session " .. DST)
+    assert.is_nil(latest(officer))
+    leader:slash("session " .. DST .. " 30")
+    W.deliver(all)
+    local s = latest(leader)
+    officer.ns.App.award(s.id, "Hadur")
+    W.deliver(all)
+    assert.is_nil(s.awardedTo)
+    assert.matches("Only the raid leader who opened this item", officer:printedText())
+  end)
+
+  it("brings an officer who joins after an item opened onto its council", function()
+    leader:slash("session " .. DST .. " 60")
+    W.deliver(all)
+    local s = latest(leader)
+    rogue.ns.App.respond(s.id, "bis")
+    W.deliver(all)
+    assert.is_false(sessionOn(joiner, s.id):isCouncil("Croaker")) -- only a viewer so far
+    croakerJoins()
+    local mine = sessionOn(joiner, s.id)
+    assert.is_true(mine:isCouncil("Croaker"))
+    assert.are.equal("bis", mine:entryFor("Anasazi").response)
+    joiner.ns.App.vote(s.id, "Anasazi")
+    W.deliver(all)
+    assert.are.equal("Anasazi", s.votes.croaker)
+  end)
+
+  it("gives a raider who reloads the items still open, and remembers what they answered", function()
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local s = latest(leader)
+    rogue.ns.App.respond(s.id, "bis")
+    W.deliver(all)
+    -- Anasazi reloads: a fresh client with the same saved variables
+    local again = W.client({ me = "Anasazi", group = GROUP, db = rogue.env.ToadsLCDB, charDb = rogue.env.ToadsLCCharDB })
+    local clients = { leader, officer, joiner, again, warrior }
+    again.ns.App.askState()
+    for _, fn in ipairs(again.later) do fn() end
+    W.deliver(clients)
+    local mine = sessionOn(again, s.id)
+    assert.is_truthy(mine, "the open item came back after the reload")
+    assert.are.equal("bis", mine.myResponse) -- not asked again
+    again.ns.Frames.showCandidate()
+    assert.is_false(again.env.ToadsLCCandidateFrame:IsShown()) -- nothing waits for an answer
+  end)
+
+  it("answers a raider's repeated requests for the open items once every few seconds", function()
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local reg = leader.ns.App.registry
+    local ask = { t = "STATE_REQUEST" }
+    -- Croaker is a raider here (not on the council, hasn't joined)
+    assert.is_true(#reg:handle(ask, "Croaker", false) > 0)
+    assert.are.equal(0, #reg:handle(ask, "Croaker", false)) -- again straight away: nothing
+    assert.is_true(#reg:handle(ask, "Toadling", false) > 0) -- someone else still gets them
+    leader.time = leader.time + reg.STATE_REPLY_EVERY
+    assert.is_true(#reg:handle(ask, "Croaker", false) > 0)
+  end)
+
+  it("forgets a reset item's attempt, so History and the export only have the real award", function()
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local s = latest(leader)
+    rogue.ns.App.respond(s.id, "main")
+    W.deliver(all)
+    leader.ns.App.award(s.id, "Anasazi")
+    W.deliver(all)
+    leader.ns.Loot.reset(1)
+    W.deliver(all)
+    assert.are.equal("done", s.phase)
+    assert.is_nil(s.awardedTo)
+    assert.is_nil(leader.ns.Store.record(s.id))
+    assert.are.equal("waiting", leader.ns.Loot.list.entries[1].status)
+    leader.ns.Loot.start(1, "session")
+    W.deliver(all)
+    local again = latest(leader)
+    assert.are_not.equal(s.id, again.id)
+    leader.ns.App.award(again.id, "Gally", "testing")
+    W.deliver(all)
+    local recs = leader.ns.Store.records(true)
+    assert.are.equal(1, #recs)
+    assert.are.equal(again.id, recs[1].id)
+  end)
+
+  it("waits for the end of the pull before the answer window pops up", function()
+    rogue.env.InCombatLockdown = function() return true end
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local cand = rogue.env.ToadsLCCandidateFrame
+    assert.is_falsy(cand and cand:IsShown())
+    rogue.env.InCombatLockdown = function() return false end
+    rogue:fire("PLAYER_REGEN_ENABLED")
+    assert.is_true(rogue.env.ToadsLCCandidateFrame:IsShown())
+  end)
+
+  it("shows who an item was awarded to on its tooltip, and the council's votes while it's open", function()
+    croakerJoins()
+    leader:slash("session " .. DST .. " 30")
+    W.deliver(all)
+    local s = latest(leader)
+    rogue.ns.App.respond(s.id, "main")
+    W.deliver(all)
+    officer.ns.App.vote(s.id, "Anasazi")
+    W.deliver(all)
+    local lines = table.concat(joiner.ns.Tooltip.tonight(28830), "\n")
+    assert.matches("votes: Anasazi 1 %(Hadur%)", lines)
+    assert.are.same({}, warrior.ns.Tooltip.tonight(28830)) -- raiders don't see the council's votes
+    leader:slash("award Anasazi")
+    W.deliver(all)
+    for _, c in ipairs({ leader, officer, rogue, warrior }) do
+      assert.matches("Awarded tonight to Anasazi", table.concat(c.ns.Tooltip.tonight(28830), "\n"), c.me)
+    end
+  end)
+end)
+
+describe("drops opening in a raid with no password", function()
+  it("opens a drop an assist looted once, from the raid leader only", function()
+    local GRUUL = "Creature-0-1-565-1-19044-1"
+    local leader = W.client({ me = "Poohtank", group = GROUP })
+    local assist = W.client({ me = "Hadur", group = GROUP })
+    local rogue = W.client({ me = "Anasazi", group = GROUP })
+    local all = { leader, assist, rogue }
+    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    W.deliver(all)
+    assist:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local s = latest(leader)
+    assert.is_truthy(s, "the raid leader opened it")
+    assert.are.equal("Poohtank", latest(assist).leader) -- the assist recorded and shared it, no more
+    local open = 0
+    for _ in pairs(rogue.ns.App.registry.sessions) do open = open + 1 end
+    assert.are.equal(1, open) -- one item for the raider to answer, not two
   end)
 end)
 

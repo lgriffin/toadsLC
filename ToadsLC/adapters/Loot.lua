@@ -102,6 +102,12 @@ local function bossOf(source)
 end
 
 function Loot.onLootOpened()
+  Loot.recordCorpse()
+  -- master loot after recording, so every slot's link is read before items leave the corpse
+  if ns.Mule then ns.Mule.onLootOpened() end
+end
+
+function Loot.recordCorpse()
   if not Loot.recording() then return end
   local counts, added = {}, {}
   for slot = 1, GetNumLootItems() do
@@ -120,13 +126,49 @@ function Loot.onLootOpened()
   if #added > 0 then
     local names = {}
     for i, e in ipairs(added) do names[i] = Loot.linkOf(e) end
-    ns.Chat.print(string.format("Added to the loot list: %s. /tlc loot to start them.", table.concat(names, ", ")))
+    if not Loot.openDrops(added) then
+      ns.Chat.print(string.format("Added to the loot list: %s. /tlc loot to start them.", table.concat(names, ", ")))
+    end
   end
+end
+
+---------------------------------------------------------------------------
+-- answering as it drops: each new item opens for answers straight away, with no timer, so
+-- raiders answer between pulls and the votes build up before the council hands it out
+---------------------------------------------------------------------------
+
+-- opensDrops(): this client opens new drops for answers. Only one client may, or each drop
+-- would open twice: the raid leader who began the raid, or with no password the group leader
+-- (assists still record and share drops; the leader opens them as they arrive)
+function Loot.opensDrops()
+  if ns.Store.settings().openOnDrop == false or not IsInGroup() or ns.Sim.active then return false end
+  if not ns.App.canStart() then return false end
+  return ns.App.secret() ~= nil or UnitIsGroupLeader("player") and true or false
+end
+
+-- openDrops(entries) -> true when they were opened (one raid chat line for them all)
+function Loot.openDrops(entries)
+  if not Loot.opensDrops() then return false end
+  local parts = {}
+  for _, e in ipairs(entries) do
+    if not e.sim and LootList.startable(e) then
+      local s = ns.App.open(nil, nil, "session", e, true, true)
+      if s then parts[#parts + 1] = Loot.linkOf(e) end
+    end
+  end
+  if #parts == 0 then return false end
+  local head = "[ToadsLC] Open for answers: "
+  for _, line in ipairs(Loot.lines(parts)) do
+    ns.Chat.say(head .. line)
+    head = ""
+  end
+  ns.Chat.say("[ToadsLC] Answer BiS / Main / OS / Pass in /tlc loot when you're out of combat; the council votes, then it's handed out.")
+  return true
 end
 
 -- add(itemText): an item put on the list by hand
 function Loot.add(itemText)
-  if not ns.Roster.canLead() then ns.Chat.print("You need raid lead or assist to add loot."); return end
+  if not ns.App.canStart() then ns.Chat.print(ns.App.cantStartWhy() or "You can't add loot."); return end
   local itemId, name, link = ns.App.parseItem(itemText)
   if not name then ns.Chat.print("Usage: /tlc loot add <item link>"); return end
   local e = Loot.record({ key = string.format("hand:%s:%d:%d", ns.Roster.me(), now(), #Loot.list.entries + 1),
@@ -156,14 +198,14 @@ end
 -- untimed (Announce all) takes answers until the council calls time
 function Loot.start(n, mode, seconds, untimed)
   local Chat = ns.Chat
-  if not ns.Roster.canLead() then Chat.print("You need raid lead or assist to start loot."); return end
+  if not ns.App.canStart() then Chat.print(ns.App.cantStartWhy() or "You can't start loot."); return end
   local e = Loot.list:get(n)
   if not e then Chat.print("There is no " .. tostring(n) .. " on the loot list. /tlc loot shows it."); return end
   if not LootList.startable(e) then
     Chat.print(string.format("%s is %s already.", e.name, LootList.label(e)))
     return
   end
-  local busy = ns.App.registry:rolling()
+  local busy = ns.App.registry:busy()
   if busy then
     Chat.print(busy.itemName .. " is still taking rolls; let it close (or /tlc close) first.")
     return
@@ -179,10 +221,10 @@ function Loot.startNext(mode, seconds)
   return Loot.start(Loot.list:numberOf(e), mode, seconds)
 end
 
-local function lines(parts)
+function Loot.lines(parts)
   local out, cur = {}, nil
   for _, p in ipairs(parts) do
-    if cur and #cur + 1 + #p > 250 then out[#out + 1] = cur; cur = nil end
+    if cur and #cur + 1 + #p > 220 then out[#out + 1] = cur; cur = nil end
     cur = cur and (cur .. " " .. p) or p
   end
   out[#out + 1] = cur
@@ -197,7 +239,7 @@ Loot.ALL_MAX = 20 -- items opened at once by /tlc loot all
 -- items they pressed, so a bare /roll does not count while several are open.
 function Loot.startAll()
   local Chat = ns.Chat
-  if not ns.Roster.canLead() then Chat.print("You need raid lead or assist to start loot."); return end
+  if not ns.App.canStart() then Chat.print(ns.App.cantStartWhy() or "You can't start loot."); return end
   local todo = {}
   for _, e in ipairs(Loot.list.entries) do
     if LootList.startable(e) and #todo < Loot.ALL_MAX then todo[#todo + 1] = e end
@@ -205,7 +247,7 @@ function Loot.startAll()
   if #todo == 0 then Chat.print("Nothing on the loot list is waiting."); return end
   -- one item left is still the pool: no timer, same as when there are several
   if #todo == 1 then return Loot.start(Loot.list:numberOf(todo[1]), "session", nil, true) end
-  local busy = ns.App.registry:rolling()
+  local busy = ns.App.registry:busy()
   if busy then
     Chat.print(busy.itemName .. " is still taking rolls; let it close (or /tlc close) first.")
     return
@@ -216,12 +258,12 @@ function Loot.startAll()
     if not e.sim then sim = false end
   end
   local head = string.format("[ToadsLC] Loot council: %d items open until the council calls time. Answer each in"
-    .. " the Toads LC window (BiS / Upgrade / OffSpec / Pass); while several are open a bare /roll doesn't count.", #todo)
+    .. " the Toads LC window or /tlc loot: BiS / Main / OS / Pass. No rolls: the council votes.", #todo)
   if sim then
     Chat.print("[sim] " .. head:gsub("^%[ToadsLC%] ", "") .. " " .. table.concat(parts, " "))
   else
     Chat.say(head, true)
-    for _, line in ipairs(lines(parts)) do Chat.say(line) end
+    for _, line in ipairs(Loot.lines(parts)) do Chat.say(line) end
   end
   for _, e in ipairs(todo) do
     if e.sim then ns.Sim.openEntry(e, nil, true, true) else ns.App.open(nil, nil, "session", e, true, true) end
@@ -241,7 +283,7 @@ end
 
 -- announce(): the entries still waiting, in raid chat
 function Loot.announce()
-  if not ns.Roster.canLead() then ns.Chat.print("You need raid lead or assist to announce loot."); return end
+  if not ns.App.canStart() then ns.Chat.print(ns.App.cantStartWhy() or "You can't announce loot."); return end
   local live, sim = { "[ToadsLC] Loot to hand out:" }, {}
   for _, e in ipairs(Loot.list:waiting()) do
     local part = string.format("%d. %s", Loot.list:numberOf(e), Loot.linkOf(e))
@@ -249,7 +291,7 @@ function Loot.announce()
   end
   if #live == 1 and #sim == 0 then ns.Chat.print("Nothing on the loot list is waiting."); return end
   if #live > 1 then
-    for _, line in ipairs(lines(live)) do ns.Chat.say(line) end
+    for _, line in ipairs(Loot.lines(live)) do ns.Chat.say(line) end
   end
   if #sim > 0 then ns.Chat.print("[sim] Loot to hand out: " .. table.concat(sim, " ")) end
 end
@@ -263,8 +305,38 @@ function Loot.print()
   end
 end
 
+-- reset(n): put an item back to waiting, as if it had just dropped: an open item is closed with
+-- no award, an award is undone, and the item can be opened again
+function Loot.reset(n)
+  local Chat = ns.Chat
+  if not ns.App.canStart() then Chat.print(ns.App.cantStartWhy() or "You can't reset loot."); return end
+  local e = Loot.list:get(n)
+  if not e then Chat.print("There is no " .. tostring(n) .. " on the loot list."); return end
+  local s = e.session and ns.App.registry:get(e.session)
+  if s and not s:isLeader(ns.Roster.me()) then
+    Chat.print(string.format("%s was opened by %s; only they can reset it.", e.name, s.leader))
+    return
+  end
+  if s then
+    local reg = ns.App.registry
+    if s.phase == "done" and s.awardedTo then ns.App.send(reg:unaward(s.id)) end
+    if s.phase ~= "done" then
+      s.quietAward = true -- no "not awarded" line in raid chat for a reset
+      ns.App.send(reg:award(s.id, nil, nil))
+      s.quietAward = nil
+    end
+    -- the reset attempt isn't a result: keep it out of History, the export and a reload
+    s.voided = true
+    ns.Store.dropSession(s.id)
+  end
+  e.status, e.session, e.winner = "waiting", nil, nil
+  share(e)
+  changed()
+  Chat.print("Reset " .. Loot.linkOf(e) .. ": it's waiting again.")
+end
+
 function Loot.remove(n)
-  if not ns.Roster.canLead() then ns.Chat.print("You need raid lead or assist to change the loot list."); return end
+  if not ns.App.canStart() then ns.Chat.print(ns.App.cantStartWhy() or "You can't change the loot list."); return end
   local e = Loot.list:get(n)
   if not e then ns.Chat.print("There is no " .. tostring(n) .. " on the loot list."); return end
   Loot.list:remove(e)
@@ -274,7 +346,7 @@ function Loot.remove(n)
 end
 
 function Loot.clear()
-  if not ns.Roster.canLead() then ns.Chat.print("You need raid lead or assist to clear the loot list."); return end
+  if not ns.App.canStart() then ns.Chat.print(ns.App.cantStartWhy() or "You can't clear the loot list."); return end
   local n = #Loot.list.entries
   Loot.list:clear()
   send({ { msg = { t = "LOOT_CLEAR" }, dist = "RAID" } })
@@ -342,8 +414,11 @@ function Loot.handle(m, sender, trusted)
       local e = Loot.list:byKeyOf(m.e.k)
       dirty = e ~= nil and Loot.list:remove(e)
     else
+      local new = Loot.list:byKeyOf(m.e.k) == nil
       local e = Loot.list:merge(m.e)
       if e then merged(e); dirty = true end
+      -- an assist doing master loot recorded it: the raid leader who began the raid opens it
+      if e and new and LootList.startable(e) then Loot.openDrops({ e }) end
     end
   elseif m.t == "LOOT_LIST" then
     if type(m.es) ~= "table" or #m.es > LootList.MAX then return end

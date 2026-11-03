@@ -49,13 +49,40 @@ function Comms.send(outs)
   end
 end
 
-local budget = 0
+-- The server throttles addon messages per prefix (a short burst, then about one a second) and
+-- drops what goes over, answering with a result code instead of sending. A dropped chunk loses
+-- its whole message, so a throttled chunk stays at the front of the queue and is sent again
+-- once the server has had a second to recover. Clients that answer true/false or nothing are
+-- taken at their word.
+local THROTTLED = { [3] = true, [8] = true } -- Enum.SendAddonMessageResult AddonMessageThrottle, ChannelThrottle
+Comms.RETRY_SECONDS = 1
+Comms.MAX_TRIES = 60
+
+local function throttled(r)
+  if type(r) ~= "number" then return false end
+  local E = Enum and Enum.SendAddonMessageResult
+  if E then return r == E.AddonMessageThrottle or r == E.ChannelThrottle end
+  return THROTTLED[r] == true
+end
+Comms.throttled = throttled
+
+function Comms.pending() return #queue end
+
+local budget, waitUntil = 0, 0
 frame:SetScript("OnUpdate", function(_, dt)
   if #queue == 0 then budget = 0; return end
+  if GetTime() < waitUntil then return end
   budget = math.min(PER_SECOND, budget + dt * PER_SECOND)
   while budget >= 1 and #queue > 0 do
-    local q = table.remove(queue, 1)
-    send(PREFIX, q[1], q[2], q[3])
+    local q = queue[1]
+    local r = send(PREFIX, q[1], q[2], q[3])
+    if throttled(r) then
+      q.tries = (q.tries or 0) + 1
+      if q.tries >= Comms.MAX_TRIES then table.remove(queue, 1) end
+      waitUntil, budget = GetTime() + Comms.RETRY_SECONDS, 0
+      return
+    end
+    table.remove(queue, 1)
     budget = budget - 1
   end
 end)

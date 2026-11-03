@@ -80,6 +80,17 @@ end
 function Session:isLeader(name) return nameKey(name) == nameKey(self.leader) end
 function Session:isCouncil(name) return self:isLeader(name) or contains(self.council, name) end
 
+-- admit(name): with a raid password set, holding it is what makes an officer, so a signed
+-- message from someone not on the list the item opened with puts them on it (an officer who
+-- joined after the item opened, or who is in the leader's who's-in list but not council[]).
+function Session:admit(name)
+  if name and name ~= "" and not self:isCouncil(name) and #self.council < 40 then
+    self.council[#self.council + 1] = name
+    return true
+  end
+  return false
+end
+
 function Session:timeLeft(now)
   if self.phase ~= "open" then return 0 end
   return math.max(0, self.closesAt - now)
@@ -109,7 +120,16 @@ end
 ---------------------------------------------------------------------------
 
 function Session:result()
-  return Resolver.resolve(self.item, self.candidates, self.rules)
+  local rules = self.rules
+  if self.mode == "roll" then -- a plain roll counts rolls only: a press still waiting for its roll waits
+    if not self.rollRules then
+      self.rollRules = {}
+      for k, v in pairs(self.rules) do self.rollRules[k] = v end
+      self.rollRules.rolls = true
+    end
+    rules = self.rollRules
+  end
+  return Resolver.resolve(self.item, self.candidates, rules)
 end
 
 function Session:tierOf(entry)
@@ -174,7 +194,11 @@ function Apply.RESPONSE(s, m, sender)
   if not s:isLeader(sender) then return false end
   local key = nameKey(m.p)
   if m.r == "pass" then
-    if s.live[key] then return false end
+    local k = s.live[key]
+    if k then -- an answer changed to Pass
+      s.candidates[k].ignored = "changed to pass"
+      s.live[key] = nil
+    end
     s.passed[key] = true
     return true
   end
@@ -358,16 +382,17 @@ function Session:ingestResponse(player, rsp, who)
   local spec = who.spec
   if not spec and rsp.sp and Priority.isSpec(rsp.sp) and rsp.sp:match("^(%a+):") == class then spec = rsp.sp end
   if rsp.r == "pass" then
-    if self.live[key] then return nil end
+    if self.passed[key] then return nil end
     return { t = "RESPONSE", s = self.id, p = player, r = "pass" }
   end
   if rsp.r ~= "bis" and rsp.r ~= "main" and rsp.r ~= "offspec" then return nil end
   local k = self.live[key]
   local cur = k and self.candidates[k]
   if cur then
-    -- the roll line got here first; keep the roll, add the note and spec, and BiS if pressed
+    -- a roll line (plain roll) got here first: keep the roll, add the note and spec, and BiS if
+    -- pressed. With no roll, a second press is the raider changing their answer.
     local e = { player = cur.player, class = class or cur.class, spec = spec or cur.spec,
-                response = cur.roll and self:responseFromMax(cur.max, rsp.r) or cur.response, note = rsp.n or "", roll = cur.roll, max = cur.max }
+                response = cur.roll and self:responseFromMax(cur.max, rsp.r) or rsp.r, note = rsp.n or "", roll = cur.roll, max = cur.max }
     return responseMsg(self, k, e)
   end
   local e = { player = player, class = class, spec = spec, response = rsp.r, note = rsp.n or "" }
@@ -581,9 +606,14 @@ end
 -- announcements
 ---------------------------------------------------------------------------
 
--- How an entry reads in chat: the label of the tier cell it matched ("Fury"), or OffSpec.
+local function isOffspec(s, e)
+  return e.max == s.rules.offspecRollMax or (e.max == nil and e.response == "offspec")
+end
+Session.isOffspec = isOffspec
+
+-- How an entry reads in chat: the label of the tier cell it matched ("Fury"), or OS.
 function Session:describe(e)
-  if e.max == self.rules.offspecRollMax then return "OffSpec" end
+  if isOffspec(self, e) then return "OS" end
   local t, c = Priority.match(self.item, e)
   if t then
     local cell = Priority.tiers(self.item)[t][c]
@@ -594,26 +624,29 @@ function Session:describe(e)
   return e.class or "?"
 end
 
--- BiS is flagged in front so the council sees it; Upgrade is the plain case.
+-- BiS is flagged in front so the council sees it; Main is the plain case.
 local function who(s, e, withTier)
   local label, tier = s:describe(e)
   if tier and withTier then label = strformat("%s, tier %d", label, tier) end
-  if e.response == "bis" and e.max ~= s.rules.offspecRollMax then label = "BiS, " .. label end
+  if e.response == "bis" and not isOffspec(s, e) then label = "BiS, " .. label end
   return label
 end
 
 function Session:openLine()
   local list = self.item and Priority.text(self.item)
-  local how = "/roll Upgrade, /roll " .. self.rules.offspecRollMax .. " OffSpec."
+  local how = "/roll Main, /roll " .. self.rules.offspecRollMax .. " OS."
   local head
   local span = self.untimed and "open until the council calls time"
     or strformat("%d s", self.closesAt - self.openedAt)
   if self.mode == "session" then
-    head = strformat("[ToadsLC] Loot session: %s (%s). Answer in the frame, or %s", self.itemLink, span, how)
+    head = strformat("[ToadsLC] Loot: %s (%s). Answer BiS / Main / OS / Pass in the Toads LC window (/tlc loot).",
+      self.itemLink, span)
   else
     head = strformat("[ToadsLC] Roll: %s (%s). %s", self.itemLink, span, how)
   end
-  return head .. (list and (" Priority: " .. list .. ".") or " Not on the priority list: BiS first, then highest roll.")
+  local unlisted = self.mode == "session" and " Not on the priority list: main spec and BiS first, then the council votes."
+    or " Not on the priority list: BiS first, then highest roll."
+  return head .. (list and (" Priority: " .. list .. ".") or unlisted)
 end
 
 -- resultLine(): one line for raid chat when the roll closes.
@@ -679,20 +712,20 @@ function Session.fill(template, fields)
   return (text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+([%.,!])", "%1"))
 end
 
-local RESPONSE = { bis = "BiS", main = "Upgrade", offspec = "OffSpec" }
+local RESPONSE = { bis = "BiS", main = "Main", offspec = "OS" }
 
--- awardFields() -> the placeholders for the award: item (link), name, details ("Fury, tier 1,
--- rolled 87"), response (BiS / Upgrade / OffSpec), spec, tier, roll, by (who awarded it)
+-- awardFields() -> the placeholders for the award: item (link), name, details ("BiS, Fury,
+-- tier 1", plus "rolled 87" on a plain roll), response (BiS / Main / OS), spec, tier, roll, by
 function Session:awardFields()
   local f = { item = self.itemLink or self.itemName, name = self.awardedTo or "", by = self.awardedBy }
   local e = self.awardedTo and self:entryFor(self.awardedTo)
   if e then
     -- a button press with no roll yet has a response but no max
-    local off = e.max == self.rules.offspecRollMax or e.response == "offspec"
+    local off = isOffspec(self, e) or e.response == "offspec"
     local label, tier = self:describe(e)
-    if off then label, tier = "OffSpec", nil end
+    if off then label, tier = "OS", nil end
     f.spec, f.tier, f.roll = label, tier, e.roll
-    f.response = off and "OffSpec" or RESPONSE[e.response]
+    f.response = off and "OS" or RESPONSE[e.response]
     local desc = off and label or who(self, e, true)
     f.details = e.roll and strformat("%s, rolled %d", desc, e.roll) or desc
   end
@@ -757,6 +790,14 @@ function Registry:rolling()
   return self:latest(function(s) return s.phase == "open" and s:isLeader(me) end)
 end
 
+-- busy() -> a timed item I lead that is still taking answers (a plain roll, or one announced
+-- item); items open with no timer (drops opened as they are looted, Announce all) never block
+-- announcing another
+function Registry:busy()
+  local me = self.ctx.me
+  return self:latest(function(s) return s.phase == "open" and s:isLeader(me) and not s.untimed end)
+end
+
 local function out(list, msg, dist, target)
   list[#list + 1] = { msg = msg, dist = dist or "RAID", target = target }
   return list
@@ -788,13 +829,21 @@ function Registry:open(o)
   if self.sessions[s.id] then s.id = s.id .. "-" .. (#self.order + 1) end
   self:add(s)
   self:changed(s, "SESSION_OPEN")
-  local msg = { t = "SESSION_OPEN", s = s.id, it = s.itemId, nm = s.itemName, lk = s.itemLink, z = s.zone,
-                b = s.boss, co = s.council, sec = math.min(s.closesAt - s.openedAt, Session.WIRE_MAX_SECONDS),
-                oa = s.openedAt, md = s.mode, pv = s.priorityVersion, ru = s.rules }
-  local msgs = out({}, msg)
-  local timing = s:timingMsg()
-  if timing then out(msgs, timing) end
-  return msgs, s
+  return s:openMsgs(now), s
+end
+
+-- openMsgs(now [, dist, target]) -> the SESSION_OPEN (and TIMING) another client needs to take
+-- answers for this item: at open to the raid, later whispered to a raider who missed it
+function Session:openMsgs(now, dist, target)
+  local left = self.phase == "open" and math.max(1, self.closesAt - now) or 1
+  if now <= self.openedAt then left = self.closesAt - self.openedAt end
+  local msg = { t = "SESSION_OPEN", s = self.id, it = self.itemId, nm = self.itemName, lk = self.itemLink,
+                z = self.zone, b = self.boss, co = self.council, sec = math.min(left, Session.WIRE_MAX_SECONDS),
+                oa = self.openedAt, md = self.mode, pv = self.priorityVersion, ru = self.rules }
+  local msgs = out({}, msg, dist, target)
+  local timing = self:timingMsg()
+  if timing then out(msgs, timing, dist, target) end
+  return msgs
 end
 
 -- respond(id, response, note) as a raider pressing a button.
@@ -804,7 +853,13 @@ function Registry:respond(id, response, note, me)
   me = me or self.ctx.who(self.ctx.me) or {}
   local rsp = { t = "RSP", s = id, r = response, n = note, c = me.class, sp = me.spec }
   s.myResponse = response
-  if s:isLeader(self.ctx.me) then return self:handle(rsp, self.ctx.me) end
+  if s:isLeader(self.ctx.me) then
+    local msgs = self:act(s, s:ingestResponse(self.ctx.me, rsp, me), "RESPONSE")
+    if s.mode == "roll" then
+      for _, o in ipairs(self:pressed(s, self.ctx.me)) do msgs[#msgs + 1] = o end
+    end
+    return msgs
+  end
   return out({}, rsp, "WHISPER", s.leader)
 end
 
@@ -816,13 +871,15 @@ Registry.UNCLAIMED_SECONDS = 15 -- how long a roll waits for the button press it
 -- that gets here before its press waits for it. A /roll with no press behind it only counts
 -- while a single item is open.
 
-local function openLed(self)
-  local me, n = self.ctx.me, 0
+-- Council sessions take no rolls: raiders answer BiS / Main / OS / Pass and the council votes.
+-- /roll lines only count for plain rolls (/tlc roll).
+local function rollsLed(self)
+  local me, n, last = self.ctx.me, 0, nil
   for _, id in ipairs(self.order) do
     local s = self.sessions[id]
-    if s.phase == "open" and s:isLeader(me) then n = n + 1 end
+    if s.phase == "open" and s.mode == "roll" and s:isLeader(me) then n, last = n + 1, s end
   end
-  return n
+  return n, last
 end
 
 -- awaiting(key) -> the oldest open session whose button press from this player has no roll yet
@@ -840,7 +897,7 @@ function Registry:roll(player, roll, min, max)
   local key = nameKey(player)
   local s = self:awaitingRoll(key)
   if not s then
-    local open = openLed(self)
+    local open, only = rollsLed(self)
     if open == 0 then return {} end
     if open > 1 then -- several items open: hold it for the button press it belongs to
       self.unclaimed = self.unclaimed or {}
@@ -849,7 +906,7 @@ function Registry:roll(player, roll, min, max)
       q[#q + 1] = { roll = roll, min = min, max = max, at = self:now() }
       return {}
     end
-    s = self:rolling()
+    s = only
   end
   return self:act(s, s:ingestRoll(player, roll, min, max, self.ctx.who(player)), "RESPONSE")
 end
@@ -1174,6 +1231,7 @@ function Session.valid(m)
 end
 
 Registry.STATE_RETRY = 10 -- seconds between snapshot requests for a session we have not seen
+Registry.STATE_REPLY_EVERY = 10 -- seconds: a raider asking for the open items gets them that often at most
 
 -- handle(msg, sender, trusted, signed): an addon message from another client.
 -- trusted: the message carried a valid signature for this client's council password.
@@ -1261,6 +1319,8 @@ function Registry:handle(m, sender, trusted, signed)
                             leader = sender, council = trusted and m.co or {}, rules = m.ru, mode = m.md, seconds = m.sec,
                             priorityVersion = m.pv, now = self:now(),
                             item = self.ctx.item(m.it, m.nm) })
+    -- an open signed with our raid password: we hold it, so we are on this item's council
+    if secured and trusted and s.mode == "session" then s:admit(me) end
     s.openedAt = m.oa or s.openedAt
     s.version = m.v or 0
     self:add(s)
@@ -1270,24 +1330,40 @@ function Registry:handle(m, sender, trusted, signed)
 
   if m.t == "STATE_REQUEST" then
     local msgs = {}
+    -- a raider gets the open items at most once every STATE_REPLY_EVERY seconds, so repeated
+    -- requests can't back up the leader's send queue
+    self.stateReplied = self.stateReplied or {}
+    local last = self.stateReplied[sender]
+    local raiderOk = not last or self:now() - last >= Registry.STATE_REPLY_EVERY
+    local sentRaider = false
     for _, id in ipairs(self.order) do
       local s = self.sessions[id]
-      if trusted and s:isLeader(me) and s:isCouncil(sender) and s.phase ~= "done" then
-        local st, timing = s:wireState(self:now())
-        out(msgs, st, "WHISPER", sender)
-        if timing then out(msgs, timing, "WHISPER", sender) end
+      if s:isLeader(me) and s.phase ~= "done" then
+        if trusted and secured and s.mode == "session" then s:admit(sender) end
+        if trusted and s:isCouncil(sender) then
+          local st, timing = s:wireState(self:now())
+          out(msgs, st, "WHISPER", sender)
+          if timing then out(msgs, timing, "WHISPER", sender) end
+        elseif raiderOk and s.phase == "open" and s.mode == "session" and not s.id:find("^sim%-") then
+          -- a raider who reloaded or joined late: the item is open to them as at its open
+          for _, o in ipairs(s:openMsgs(self:now(), "WHISPER", sender)) do msgs[#msgs + 1] = o end
+          sentRaider = true
+        end
       end
     end
+    if sentRaider then self.stateReplied[sender] = self:now() end
     return msgs
   end
 
   if m.t == "STATE" then
     local o = m.o
-    if not trusted or nameKey(o.leader) ~= nameKey(sender) or not contains(o.council, me) then return {} end
+    if not trusted or nameKey(o.leader) ~= nameKey(sender) or not (contains(o.council, me) or secured) then return {} end
     local known = self.sessions[m.s]
     -- A snapshot may only come from the session's own leader, and never replaces newer state.
     if known and (not known:isLeader(sender) or (m.v or 0) < (known.version or 0)) then return {} end
     local s = Session.fromState(m, self.ctx.item(o.itemId, o.itemName), self:now())
+    if secured then s:admit(me) end
+    if known then s.myResponse = known.myResponse end -- a snapshot never forgets what we answered
     self:add(s)
     self:changed(s, "STATE")
     return {}
@@ -1307,13 +1383,20 @@ function Registry:handle(m, sender, trusted, signed)
   if m.t == "RSP" then
     if not s:isLeader(me) then return {} end
     local msgs = self:act(s, s:ingestResponse(sender, m, self.ctx.who(sender)), "RESPONSE")
-    for _, o in ipairs(self:pressed(s, sender)) do msgs[#msgs + 1] = o end
+    if s.mode == "roll" then
+      for _, o in ipairs(self:pressed(s, sender)) do msgs[#msgs + 1] = o end
+    end
     return msgs
   end
 
   -- Raiders outside the council only follow the session's open, close and award.
   local public = m.t == "SESSION_CLOSE" or m.t == "AWARD" or m.t == "UNAWARD" or m.t == "REROLL" or m.t == "FINAL_CALL"
     or m.t == "TIMING"
+  -- an officer holding our password who joined after this item opened
+  if secured and trusted and s.mode == "session" and (m.t == "VOTE" or m.t == "PROPOSE") and s.phase ~= "done" then
+    s:admit(sender)
+    s:admit(me)
+  end
   if not public and not s:isCouncil(me) then return {} end
   if s:isCouncil(me) and not trusted then
     if s:isLeader(me) and s:isCouncil(sender) and (m.t == "VOTE" or m.t == "PROPOSE") then

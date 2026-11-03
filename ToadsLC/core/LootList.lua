@@ -109,9 +109,9 @@ end
 -- label(entry) -> how the status reads in the list
 function LootList.label(e)
   if e.status == "waiting" then return "waiting" end
-  if e.status == "open" then return "rolling" end
+  if e.status == "open" then return "taking answers" end
   if e.status == "voting" then return "council deciding" end
-  if e.status == "awarded" then return "to " .. (e.winner or "?") end
+  if e.status == "awarded" then return "awarded to " .. (e.winner or "?") end
   return "not awarded"
 end
 

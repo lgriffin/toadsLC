@@ -479,7 +479,8 @@ end
 function Codec.validateSession(doc)
   return run(function(d)
     header(d, Codec.SESSION_FORMAT)
-    only(d, "document", { "format", "version", "exportedAt", "exportedBy", "addonVersion", "priorityVersion", "sessions" })
+    only(d, "document", { "format", "version", "exportedAt", "exportedBy", "addonVersion", "priorityVersion", "raidName",
+                          "sessions" })
     nonEmpty(d.exportedBy, "exportedBy")
     nonEmpty(d.addonVersion, "addonVersion")
     str(d.priorityVersion, "priorityVersion", true)

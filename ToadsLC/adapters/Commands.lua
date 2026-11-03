@@ -13,15 +13,18 @@ local HELP = {
   "/tlc end  forget the raid password",
   "/tlc session <item> [seconds]  open a loot session for the council",
   "/tlc roll <item> [seconds]  plain priority roll in raid chat",
-  "/tlc loot  the raid's loot list: what dropped, waiting for the council",
+  "/tlc loot  tonight's loot: answer BiS / Main / OS / Pass (raiders); the council's Loot page once you've joined",
   "/tlc loot <n> [seconds] | /tlc loot next  open a council session for item n (or the next waiting one)",
   "/tlc timer [seconds]  how long one announced item takes answers (10-120, default 15)",
-  "/tlc loot all  open every item still to hand out at once, no timer (Last call / /tlc close ends it); raiders answer each in one window",
-  "/tlc loot roll <n> [seconds]  plain priority roll for item n",
+  "/tlc loot all  open every item still waiting at once, no timer (Close answers / /tlc close ends it)",
+  "/tlc loot reset <n>  put item n back to waiting (an open item closes with no award; an award is undone)",
+  "/tlc loot drops on|off  open each drop for answers as it's looted (on by default)",
+  "/tlc loot window  the small loot list window",
   "/tlc loot announce | list | add <item> | remove <n> | clear | auto on|off",
   "/tlc loot party on|off  practise in a 5-man: record party drops too (rare and up) when you lead",
   "/tlc mule <name> | target | off  master looter: greens and blues go straight to one player",
   "/tlc mule quality green blue epic  which rarities the mule gets (council items never go to the mule)",
+  "/tlc mule self on|off  as master looter, loot the council's items into your own bags (on by default)",
   "/tlc trade  what is still to trade to the winners; a trade with one puts their items in by itself",
   "/tlc trade done <name> | on | off  mark a winner's items handed over; turn the trade filling on or off",
   "/tlc announce  the award and trade lines and the winner's whisper; /tlc announce award|trade|whisper on | off | reset | <text>",
@@ -73,7 +76,8 @@ function handlers.loot(rest)
   local sub, arg = words(rest)
   local n = tonumber(sub)
   if sub == "" then
-    ns.Frames.showLoot()
+    -- the same Loot page as the window: the council's list once joined, else your answers
+    if ns.Main.unlocked() then ns.Main.showItem(nil) else ns.Main.go("rolls") end
   elseif n then
     L.start(n, "session", tonumber(arg))
   elseif sub == "next" then
@@ -88,6 +92,14 @@ function handlers.loot(rest)
     L.add(arg)
   elseif sub == "remove" then
     L.remove(tonumber(arg) or arg)
+  elseif sub == "reset" then
+    L.reset(tonumber(arg) or arg)
+  elseif sub == "window" then
+    ns.Frames.showLoot()
+  elseif sub == "drops" then
+    local st = ns.Store.settings()
+    if arg == "on" then st.openOnDrop = true elseif arg == "off" then st.openOnDrop = false else st.openOnDrop = st.openOnDrop == false end
+    ns.Chat.print("Opening drops for answers as they're looted " .. (st.openOnDrop ~= false and "on" or "off") .. ".")
   elseif sub == "announce" then
     L.announce()
   elseif sub == "list" then
@@ -139,8 +151,8 @@ local ANNOUNCE = {
 
 local function sample(which, text)
   local S = ns.Session
-  local fields = { item = "[Dragonspine Trophy]", name = "Anasazi", details = "Rogue, tier 1, rolled 87",
-                   response = "BiS", spec = "Rogue", tier = 1, roll = 87, by = ns.Roster.me() }
+  local fields = { item = "[Dragonspine Trophy]", name = "Anasazi", details = "BiS, Rogue, tier 1",
+                   response = "BiS", spec = "Rogue", tier = 1, by = ns.Roster.me() }
   return S.fill(text or S[ANNOUNCE[which].default], fields)
 end
 

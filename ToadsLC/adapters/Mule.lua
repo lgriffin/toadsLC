@@ -18,8 +18,6 @@ Mule.NAMES = { [2] = "green", [3] = "blue", [4] = "epic" }
 Mule.DEFAULT = { 2, 3 }
 Mule.MAX_CANDIDATES = 40
 
-local frame = CreateFrame("Frame")
-
 local function settings() return ns.Store.settings() end
 local function key(name) return name and Priority.nameKey(ns.Roster.normalize(name)) end
 
@@ -67,11 +65,18 @@ end
 -- giving out
 ---------------------------------------------------------------------------
 
--- masterLooter(): this player hands out the loot
+-- masterLooter(): this player hands out the loot. The TBC Anniversary client has
+-- IsMasterLooter() and C_PartyInfo.GetLootMethod(), which answers a number
+-- (Enum.LootMethod.Masterlooter = 2), not the old GetLootMethod()'s "master": checking for
+-- "master" alone meant the mule never ran in game.
 function Mule.masterLooter()
-  if not GetLootMethod or not IsInGroup() then return false end
-  local method, partyMaster, raidMaster = GetLootMethod()
-  if method ~= "master" then return false end
+  if not IsInGroup() then return false end
+  if IsMasterLooter then return IsMasterLooter() and true or false end
+  local get = (C_PartyInfo and C_PartyInfo.GetLootMethod) or GetLootMethod
+  if not get then return false end
+  local method, partyMaster, raidMaster = get()
+  local ml = Enum and Enum.LootMethod and Enum.LootMethod.Masterlooter or 2
+  if method ~= "master" and method ~= ml then return false end
   if IsInRaid() then return raidMaster ~= nil and UnitIsUnit("raid" .. raidMaster, "player") end
   return partyMaster == 0
 end
@@ -102,38 +107,48 @@ local function isItem(slot)
   return LootSlotHasItem == nil or LootSlotHasItem(slot)
 end
 
--- muled(slot) -> link, when this slot goes to the mule
-local function muled(slot, qualities, threshold)
+-- where(slot) -> link, "mule" | "self": this slot goes to the mule, or (a council item) into
+-- the master looter's own bags to be traded once it is awarded
+local function where(slot, qualities, threshold, mule)
   if not isItem(slot) then return nil end
   local link = GetLootSlotLink(slot)
   local itemId = link and tonumber(link:match("item:(%d+)"))
   local _, _, _, _, quality, locked, isQuestItem = GetLootSlotInfo(slot)
-  if not itemId or locked or isQuestItem or not quality then return nil end
-  if not qualities[quality] or quality < threshold then return nil end
-  if ns.Loot.wanted(itemId, quality) then return nil end -- the council's, not the mule's
-  return link
+  if not itemId or locked or isQuestItem or not quality or quality < threshold then return nil end
+  if ns.Loot.wanted(itemId, quality) then -- the council's, not the mule's
+    -- only the client recording the raid's loot takes it, and only while that's on
+    if settings().lootSelf ~= false and ns.Loot.recording() and ns.App.canStart() then return link, "self" end
+    return nil
+  end
+  if mule and qualities[quality] then return link, "mule" end
+  return nil
 end
 
+-- onLootOpened(): called by Loot once the corpse is on the loot list
 function Mule.onLootOpened()
   local name = settings().mule
-  if not name or not Mule.masterLooter() then return end
+  if not Mule.masterLooter() then return end
   local qualities = settings().muleQualities or {}
   local threshold = GetLootThreshold and GetLootThreshold() or 2
-  local given, missed = {}, {}
+  local given, missed, kept = {}, {}, {}
+  local me = ns.Roster.me()
   for slot = GetNumLootItems(), 1, -1 do
-    local link = muled(slot, qualities, threshold)
+    local link, to = where(slot, qualities, threshold, name)
     if link then
-      local i = candidate(slot, name)
+      local i = candidate(slot, to == "self" and me or name)
       if i then
         GiveMasterLoot(slot, i)
-        table.insert(given, 1, link)
-      else
+        table.insert(to == "self" and kept or given, 1, link)
+      elseif to == "mule" then
         table.insert(missed, 1, link)
       end
     end
   end
   if #given > 0 then
     ns.Chat.print(string.format("Muled to %s: %s.", name, table.concat(given, ", ")))
+  end
+  if #kept > 0 then
+    ns.Chat.print(string.format("Looted for the council: %s. Trade them once they're awarded.", table.concat(kept, ", ")))
   end
   if #missed > 0 then
     ns.Chat.print(string.format("%s can't take %s from this corpse (out of range, or not eligible). Left on the corpse.",
@@ -174,6 +189,12 @@ function Mule.command(rest)
   if lower == "off" then
     Mule.set(nil)
     ns.Chat.print("Loot mule off.")
+  elseif lower == "self" or lower == "keep" then
+    local st = settings()
+    local a = arg:lower()
+    if a == "on" then st.lootSelf = true elseif a == "off" then st.lootSelf = false else st.lootSelf = st.lootSelf == false end
+    ns.Chat.print("Council items " .. (st.lootSelf ~= false and "go into your bags as master looter."
+      or "stay on the corpse."))
   elseif lower == "quality" or lower == "qualities" or lower == "rarity" then
     local list = {}
     for word in arg:lower():gmatch("%a+") do
@@ -197,8 +218,7 @@ end
 function Mule.init()
   local st = settings()
   if st.muleQualities == nil then Mule.setQualities(Mule.DEFAULT) end
-  frame:RegisterEvent("LOOT_OPENED")
-  frame:SetScript("OnEvent", function() Mule.onLootOpened() end)
+  -- LOOT_OPENED reaches Mule through Loot, after the corpse is recorded
 end
 
 return Mule

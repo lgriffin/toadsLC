@@ -110,7 +110,7 @@ describe("main window", function()
       local row = row1()
       assert.is_true(row:IsShown())
       assert.matches("Item 28830", row.cells.item:GetText())
-      assert.matches("waiting to announce", row.cells.status:GetText())
+      assert.matches("waiting to open", row.cells.status:GetText())
       assert.matches("2h 00m", row.cells.trade:GetText())
       assert.matches("^%d%d:%d%d$", row.cells.dropped:GetText())
       W.tick(5400)
@@ -121,31 +121,30 @@ describe("main window", function()
       assert.matches("expired", row.cells.trade:GetText())
     end)
 
-    it("announces one item from its row, and all of them with Announce all", function()
+    it("opens one item from its row, and all of them with Open all", function()
       W.slash("loot add [Dragonspine Trophy]")
       Main.refresh()
       local p = page("loot").listView
       assert.is_true(p.all:IsShown())
       click(row1().announce)
-      assert.matches("Loot session: .*Item 28830", W.chatText())
+      assert.matches("Loot: .*Item 28830", W.chatText())
       Main.refresh()
-      assert.matches("awaiting rolls: 0 of 4 in", row1().cells.status:GetText())
+      assert.matches("taking answers: 0 of 4", row1().cells.status:GetText())
       W.ns.App.closeLast()
       W.tick(10) -- the last call runs out
       click(p.all) -- the second copy, still waiting
       Main.refresh()
-      assert.matches("awaiting rolls", page("loot").listView.list.rows[2].cells.status:GetText())
+      assert.matches("taking answers", page("loot").listView.list.rows[2].cells.status:GetText())
     end)
 
     it("shows the officer who answered, what they picked, and who to call out", function()
       click(row1().announce)
       local s = W.ns.App.registry:latest()
       W.ns.App.respond(s.id, "bis")
-      W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 80 (1-100)")
       local group = W.ns.Roster.group()
       W.ns.App.registry:handle({ t = "RSP", s = s.id, r = "pass" }, group[2], true, false)
       Main.refresh()
-      assert.matches("awaiting rolls: 2 of 4 in", row1().cells.status:GetText())
+      assert.matches("taking answers: 2 of 4", row1().cells.status:GetText())
       click(row1())
       local d = page("loot").detailView
       local line = d.answers:GetText()
@@ -158,37 +157,55 @@ describe("main window", function()
       assert.matches("Still to answer for .*Item 28830.*s left%): " .. group[3] .. ", " .. group[4], W.chatText())
     end)
 
-    it("opens an item to show its answers, who voted and who is still to vote", function()
+    it("opens an item to show its answers as a live poll: click a name to vote, award from the row", function()
       click(row1().announce)
       local s = W.ns.App.registry:latest()
       W.ns.App.respond(s.id, "main")
-      W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 80 (1-100)")
+      W.ns.App.registry:handle({ t = "RSP", s = s.id, r = "bis" }, "Anasazi", true, false)
       W.ns.App.close(s.id)
       W.tick(10)
       Main.refresh()
-      assert.matches("missing votes", row1().cells.status:GetText())
+      assert.matches("council deciding: 0 of 4 voted", row1().cells.status:GetText())
 
       click(row1()) -- into the item
       local d = page("loot").detailView
       assert.is_true(d:IsShown())
       assert.matches("Still to vote: Poohtank", d.votes:GetText())
-      local cand = d.list.rows[1]
-      assert.matches("Poohtank", cand.cells.name:GetText())
-      assert.are.equal("80", cand.cells.roll:GetText())
-      cand.scripts.OnClick(cand, "LeftButton") -- a click votes
+      local first, second = d.list.rows[1], d.list.rows[2]
+      assert.matches("Anasazi", first.cells.name:GetText()) -- BiS ranks ahead of Main
+      assert.matches("Poohtank", second.cells.name:GetText())
+      second.scripts.OnClick(second, "LeftButton") -- a click votes
       Main.refresh()
-      assert.matches("Voted: Poohtank %(Poohtank%)", d.votes:GetText())
-      assert.is_true(d.award:IsShown())
-      click(d.award)
+      assert.matches("Poohtank > Poohtank", d.votes:GetText())
+      assert.matches("1: Poohtank", second.cells.votes:GetText()) -- the tally names who voted
+      first.scripts.OnClick(first, "LeftButton") -- and moves the vote
       Main.refresh()
-      assert.are.equal("Poohtank", s.awardedTo)
+      assert.matches("1: Poohtank", first.cells.votes:GetText())
+      assert.are.equal("", second.cells.votes:GetText())
+      assert.is_true(second.award:IsShown()) -- the leader awards from any row
+      click(first.award)
+      Main.refresh()
+      assert.are.equal("Anasazi", s.awardedTo)
+      assert.are.equal("votes", s.awardedVia)
       assert.is_true(d.undo:IsShown())
-      s.rules.votesVisibleTo = "counts" -- the rules hide who voted for whom: only counts show
-      Main.refresh()
-      assert.matches("^|cff%x+1|r$", cand.cells.votes:GetText()) -- my own vote, as a count
-      assert.is_nil(d.votes:GetText():find("(Poohtank)", 1, true))
+      assert.is_false(first.award:IsShown())
       click(d.back)
-      assert.matches("awarded to Poohtank", row1().cells.status:GetText())
+      assert.matches("awarded to Anasazi", row1().cells.status:GetText())
+    end)
+
+    it("resets an item from its right-click menu", function()
+      click(row1().announce)
+      local s = W.ns.App.registry:latest()
+      W.slash("award Anasazi")
+      assert.are.equal("Anasazi", s.awardedTo)
+      W.ns.Loot.reset(1)
+      local e = W.ns.Loot.list.entries[1]
+      assert.are.equal("waiting", e.status)
+      assert.is_nil(e.session)
+      assert.is_nil(s.awardedTo) -- the award is undone
+      Main.refresh()
+      assert.matches("waiting to open", row1().cells.status:GetText())
+      assert.is_true(row1().announce:IsShown())
     end)
   end)
 
@@ -243,7 +260,7 @@ describe("main window", function()
     assert.is_false(page("raid").versions:IsShown())
     W.ns.Version = check
   end)
-  it("times one item by the officers' setting, and shows the raider's own roll", function()
+  it("times one item by the officers' setting, and shows the raider's own answer", function()
     W.slash("begin " .. PASSWORD)
     W.slash("")
     Main.go("raid")
@@ -255,13 +272,19 @@ describe("main window", function()
     W.slash("loot 1")
     local s = W.ns.App.registry:latest()
     assert.are.equal(25, s.closesAt - s.openedAt)
-    W.ns.App.respond(s.id, "bis")
     Main.go("rolls")
-    assert.matches("…", page("rolls").list.rows[1].cells.roll:GetText()) -- pressed, roll not in yet
-    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 64 (1-100)")
+    local row = page("rolls").list.rows[1]
+    assert.is_true(row.answers[1]:IsShown()) -- BiS / Main / OS / Pass right on the row
+    click(row.answers[1])
     Main.refresh()
-    assert.are.equal("BiS", page("rolls").list.rows[1].cells.mine:GetText())
-    assert.are.equal("64", page("rolls").list.rows[1].cells.roll:GetText())
+    assert.matches("BiS", row.cells.mine:GetText())
+    assert.is_false(row.answers[1]:IsShown())
+    assert.is_true(row.change:IsShown())
+    click(row.change)
+    click(row.answers[3]) -- changed to OS
+    Main.refresh()
+    assert.are.equal("offspec", s:entryFor("Poohtank").response)
+    assert.matches("OS", row.cells.mine:GetText())
   end)
 
   it("keeps the council pages when one page breaks on the live client", function()
