@@ -319,6 +319,44 @@ describe("a raid night run the 0.3 way", function()
     assert.is_false(again.env.ToadsLCCandidateFrame:IsShown()) -- nothing waits for an answer
   end)
 
+  it("answers a raider's repeated requests for the open items once every few seconds", function()
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local reg = leader.ns.App.registry
+    local ask = { t = "STATE_REQUEST" }
+    -- Croaker is a raider here (not on the council, hasn't joined)
+    assert.is_true(#reg:handle(ask, "Croaker", false) > 0)
+    assert.are.equal(0, #reg:handle(ask, "Croaker", false)) -- again straight away: nothing
+    assert.is_true(#reg:handle(ask, "Toadling", false) > 0) -- someone else still gets them
+    leader.time = leader.time + reg.STATE_REPLY_EVERY
+    assert.is_true(#reg:handle(ask, "Croaker", false) > 0)
+  end)
+
+  it("forgets a reset item's attempt, so History and the export only have the real award", function()
+    leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local s = latest(leader)
+    rogue.ns.App.respond(s.id, "main")
+    W.deliver(all)
+    leader.ns.App.award(s.id, "Anasazi")
+    W.deliver(all)
+    leader.ns.Loot.reset(1)
+    W.deliver(all)
+    assert.are.equal("done", s.phase)
+    assert.is_nil(s.awardedTo)
+    assert.is_nil(leader.ns.Store.record(s.id))
+    assert.are.equal("waiting", leader.ns.Loot.list.entries[1].status)
+    leader.ns.Loot.start(1, "session")
+    W.deliver(all)
+    local again = latest(leader)
+    assert.are_not.equal(s.id, again.id)
+    leader.ns.App.award(again.id, "Gally", "testing")
+    W.deliver(all)
+    local recs = leader.ns.Store.records(true)
+    assert.are.equal(1, #recs)
+    assert.are.equal(again.id, recs[1].id)
+  end)
+
   it("waits for the end of the pull before the answer window pops up", function()
     rogue.env.InCombatLockdown = function() return true end
     leader:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
@@ -347,6 +385,26 @@ describe("a raid night run the 0.3 way", function()
     for _, c in ipairs({ leader, officer, rogue, warrior }) do
       assert.matches("Awarded tonight to Anasazi", table.concat(c.ns.Tooltip.tonight(28830), "\n"), c.me)
     end
+  end)
+end)
+
+describe("drops opening in a raid with no password", function()
+  it("opens a drop an assist looted once, from the raid leader only", function()
+    local GRUUL = "Creature-0-1-565-1-19044-1"
+    local leader = W.client({ me = "Poohtank", group = GROUP })
+    local assist = W.client({ me = "Hadur", group = GROUP })
+    local rogue = W.client({ me = "Anasazi", group = GROUP })
+    local all = { leader, assist, rogue }
+    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    W.deliver(all)
+    assist:loot({ { 28830, "Dragonspine Trophy", 4, GRUUL } })
+    W.deliver(all)
+    local s = latest(leader)
+    assert.is_truthy(s, "the raid leader opened it")
+    assert.are.equal("Poohtank", latest(assist).leader) -- the assist recorded and shared it, no more
+    local open = 0
+    for _ in pairs(rogue.ns.App.registry.sessions) do open = open + 1 end
+    assert.are.equal(1, open) -- one item for the raider to answer, not two
   end)
 end)
 

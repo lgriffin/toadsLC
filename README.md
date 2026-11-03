@@ -237,7 +237,8 @@ the trade after that.
 With master loot on, **the items the council hands out come straight to the master looter**
 when they open a corpse: epics and anything on the priority list go into your bags, and chat
 says *Looted for the council: ...*, so nobody else can pick them up and you can trade them to the
-winners. Greens and blues stay on the corpse unless a mule is named.
+winners. Greens and blues stay on the corpse unless a mule is named. This only happens on the client recording
+the raid's loot; `/tlc mule self off` leaves council items on the corpse instead.
 
 The master looter can also name one player (a bank alt, an enchanter) who gets
 every green and blue off each corpse, so nobody clicks through the trash drops. When the master
@@ -412,6 +413,7 @@ The addon ranks everyone who answered; the council votes; the raid leader awards
 | `/tlc loot add <item>` / `remove <n>` / `clear` | leader or assist | change the list by hand |
 | `/tlc loot auto on` / `off` | leader or assist | record corpses you loot in a raid, or not |
 | `/tlc loot party on` / `off` | party leader | record corpses in a party too, rare and up, for a 5-man test run |
+| `/tlc mule <name>` / `off` / `quality ...` / `self on\|off` | master looter | greens and blues to one player; council items into your bags (on by default) |
 | `/tlc trade` | whoever holds the loot | what is still to trade to the winners; opening a trade with one puts their items in |
 | `/tlc trade done <name>` / `on` / `off` | whoever holds the loot | mark a winner's items handed over; turn the trade filling on or off |
 | `/tlc announce` | leader / whoever holds the loot | show the award and trade lines and the winner's whisper |

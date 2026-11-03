@@ -137,9 +137,13 @@ end
 -- raiders answer between pulls and the votes build up before the council hands it out
 ---------------------------------------------------------------------------
 
--- opensDrops(): this client opens new drops for answers (the raid leader who began the raid)
+-- opensDrops(): this client opens new drops for answers. Only one client may, or each drop
+-- would open twice: the raid leader who began the raid, or with no password the group leader
+-- (assists still record and share drops; the leader opens them as they arrive)
 function Loot.opensDrops()
-  return ns.Store.settings().openOnDrop ~= false and IsInGroup() and ns.App.canStart() and not ns.Sim.active
+  if ns.Store.settings().openOnDrop == false or not IsInGroup() or ns.Sim.active then return false end
+  if not ns.App.canStart() then return false end
+  return ns.App.secret() ~= nil or UnitIsGroupLeader("player") and true or false
 end
 
 -- openDrops(entries) -> true when they were opened (one raid chat line for them all)
@@ -321,6 +325,9 @@ function Loot.reset(n)
       ns.App.send(reg:award(s.id, nil, nil))
       s.quietAward = nil
     end
+    -- the reset attempt isn't a result: keep it out of History, the export and a reload
+    s.voided = true
+    ns.Store.dropSession(s.id)
   end
   e.status, e.session, e.winner = "waiting", nil, nil
   share(e)

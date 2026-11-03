@@ -116,7 +116,8 @@ local function where(slot, qualities, threshold, mule)
   local _, _, _, _, quality, locked, isQuestItem = GetLootSlotInfo(slot)
   if not itemId or locked or isQuestItem or not quality or quality < threshold then return nil end
   if ns.Loot.wanted(itemId, quality) then -- the council's, not the mule's
-    if settings().lootSelf ~= false then return link, "self" end
+    -- only the client recording the raid's loot takes it, and only while that's on
+    if settings().lootSelf ~= false and ns.Loot.recording() and ns.App.canStart() then return link, "self" end
     return nil
   end
   if mule and qualities[quality] then return link, "mule" end
@@ -188,6 +189,12 @@ function Mule.command(rest)
   if lower == "off" then
     Mule.set(nil)
     ns.Chat.print("Loot mule off.")
+  elseif lower == "self" or lower == "keep" then
+    local st = settings()
+    local a = arg:lower()
+    if a == "on" then st.lootSelf = true elseif a == "off" then st.lootSelf = false else st.lootSelf = st.lootSelf == false end
+    ns.Chat.print("Council items " .. (st.lootSelf ~= false and "go into your bags as master looter."
+      or "stay on the corpse."))
   elseif lower == "quality" or lower == "qualities" or lower == "rarity" then
     local list = {}
     for word in arg:lower():gmatch("%a+") do

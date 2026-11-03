@@ -57,6 +57,17 @@ describe("the loot mule", function()
     assert.are.same({ [1] = "Poohtank" }, W.given)
   end)
 
+  it("leaves the council's items on the corpse with /tlc mule self off, or when not recording loot", function()
+    W.ns.Store.settings().lootSelf = nil
+    W.slash("mule self off")
+    W.loot(CORPSE)
+    assert.are.same({}, W.given)
+    W.slash("mule self on")
+    W.slash("loot auto off")
+    W.loot(CORPSE)
+    assert.are.same({}, W.given)
+  end)
+
   it("gives greens and blues to the mule and leaves the council's items", function()
     W.slash("mule Gally")
     W.loot(CORPSE)

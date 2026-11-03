@@ -100,6 +100,17 @@ function Store.saveSession(rec, openedAt)
   row.openedAt = openedAt or row.openedAt
 end
 
+-- dropSession(id): forget a session that was reset, saved record and live state both
+function Store.dropSession(id)
+  if ToadsLCDB.sessions[id] then
+    ToadsLCDB.sessions[id] = nil
+    for i, v in ipairs(ToadsLCDB.order) do
+      if v == id then table.remove(ToadsLCDB.order, i); break end
+    end
+  end
+  Store.clearLive(id)
+end
+
 function Store.record(id)
   local row = ToadsLCDB.sessions[id]
   return row and Codec.decode(row.json)

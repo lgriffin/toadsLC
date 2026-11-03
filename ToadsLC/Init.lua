@@ -33,7 +33,7 @@ local loginTime = 0
 local LIVE_MAX_AGE = 2 * 3600 -- a leader's unfinished session survives a reload this long
 
 local function persist(s)
-  if not s:isLeader(Roster.me()) or ns.Sim.isSim(s) then return end
+  if s.voided or not s:isLeader(Roster.me()) or ns.Sim.isSim(s) then return end
   if s.phase ~= "open" then Store.saveSession(s:serialize(), s.openedAt) end
   if s.phase == "done" then Store.clearLive(s.id) else Store.saveLive(s.id, s:stateMsg(App.now()), App.now()) end
 end
@@ -225,8 +225,8 @@ function App.respond(id, response, note)
   if s.phase ~= "open" then Chat.print(s.itemName .. " isn't taking answers any more."); return end
   send(App.registry:respond(id, response, note, Roster.specOf("player")))
   Store.setAnswer(id, response, App.now())
-  Chat.print(string.format("Answered %s for %s%s.", App.ANSWERS[response] or response, s.itemLink or s.itemName,
-    response ~= "pass" and " The council votes once answers are in" or ""))
+  Chat.print(string.format("Answered %s for %s.%s", App.ANSWERS[response] or response, s.itemLink or s.itemName,
+    response ~= "pass" and " The council votes once answers are in." or ""))
   if Frames.refreshCandidate then Frames.refreshCandidate() end
   if ns.Main.refresh then ns.Main.refresh() end
 end

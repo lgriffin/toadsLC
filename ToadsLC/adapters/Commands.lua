@@ -24,6 +24,7 @@ local HELP = {
   "/tlc loot party on|off  practise in a 5-man: record party drops too (rare and up) when you lead",
   "/tlc mule <name> | target | off  master looter: greens and blues go straight to one player",
   "/tlc mule quality green blue epic  which rarities the mule gets (council items never go to the mule)",
+  "/tlc mule self on|off  as master looter, loot the council's items into your own bags (on by default)",
   "/tlc trade  what is still to trade to the winners; a trade with one puts their items in by itself",
   "/tlc trade done <name> | on | off  mark a winner's items handed over; turn the trade filling on or off",
   "/tlc announce  the award and trade lines and the winner's whisper; /tlc announce award|trade|whisper on | off | reset | <text>",

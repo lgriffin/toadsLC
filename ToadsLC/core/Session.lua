@@ -1231,6 +1231,7 @@ function Session.valid(m)
 end
 
 Registry.STATE_RETRY = 10 -- seconds between snapshot requests for a session we have not seen
+Registry.STATE_REPLY_EVERY = 10 -- seconds: a raider asking for the open items gets them that often at most
 
 -- handle(msg, sender, trusted, signed): an addon message from another client.
 -- trusted: the message carried a valid signature for this client's council password.
@@ -1329,6 +1330,12 @@ function Registry:handle(m, sender, trusted, signed)
 
   if m.t == "STATE_REQUEST" then
     local msgs = {}
+    -- a raider gets the open items at most once every STATE_REPLY_EVERY seconds, so repeated
+    -- requests can't back up the leader's send queue
+    self.stateReplied = self.stateReplied or {}
+    local last = self.stateReplied[sender]
+    local raiderOk = not last or self:now() - last >= Registry.STATE_REPLY_EVERY
+    local sentRaider = false
     for _, id in ipairs(self.order) do
       local s = self.sessions[id]
       if s:isLeader(me) and s.phase ~= "done" then
@@ -1337,12 +1344,14 @@ function Registry:handle(m, sender, trusted, signed)
           local st, timing = s:wireState(self:now())
           out(msgs, st, "WHISPER", sender)
           if timing then out(msgs, timing, "WHISPER", sender) end
-        elseif s.phase == "open" and s.mode == "session" and not s.id:find("^sim%-") then
+        elseif raiderOk and s.phase == "open" and s.mode == "session" and not s.id:find("^sim%-") then
           -- a raider who reloaded or joined late: the item is open to them as at its open
           for _, o in ipairs(s:openMsgs(self:now(), "WHISPER", sender)) do msgs[#msgs + 1] = o end
+          sentRaider = true
         end
       end
     end
+    if sentRaider then self.stateReplied[sender] = self:now() end
     return msgs
   end
 
