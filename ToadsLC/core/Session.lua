@@ -895,7 +895,7 @@ end
 
 -- hello(): an officer checking their council password against the raid's
 function Registry:hello()
-  self.helloAt = self:now()
+  self.helloAt, self.helloTo = self:now(), nil
   self.confirmedBy, self.mismatchWith = nil, nil
   return out({}, { t = "HELLO" })
 end
@@ -904,7 +904,9 @@ end
 -- so the leader sees who is in (and officers who joined before Begin raid get confirmed).
 -- Clients before 0.2.8 ignore ROLLCALL; their officers show as not joined until they Join.
 function Registry:rollcall()
-  self.joined = {}
+  -- officers already in stay listed: each answers at most once per ROLLCALL_EVERY, so clearing
+  -- here would drop names a quick second call gets no answer from
+  self.joined = self.joined or {}
   self.rollcallAt = self:now()
   return out({}, { t = "ROLLCALL" })
 end
@@ -914,7 +916,7 @@ end
 --   officer: confirmedBy = { name, at }, or mismatchWith = name; councilIn = the leader's list
 function Registry:forgetCouncil()
   self.joined, self.confirmedBy, self.mismatchWith, self.helloAt, self.councilIn = {}, nil, nil, nil, nil
-  self.welcomedTo = nil
+  self.welcomedBy, self.helloTo, self.heardList = nil, nil, {}
 end
 
 -- councilInMsg() -> COUNCIL_IN: the leader's list of officers in, for every officer to see
@@ -944,6 +946,21 @@ function Registry:councilList(hosting)
   end
   table.sort(list.names)
   return list
+end
+
+-- adoptCouncilList(): show the list from the leader who confirmed our password, and welcome
+-- us to their raid once (a rename doesn't welcome us again)
+function Registry:adoptCouncilList()
+  local host = self.confirmedBy and nameKey(self.confirmedBy.name)
+  local list = host and self.heardList and self.heardList[host]
+  if list then
+    self.councilIn = list
+    if self.welcomedBy ~= host then
+      self.welcomedBy = host
+      if self.ctx.notify then self.ctx.notify("welcome_raid", list.from, list.raidName or (list.from .. "'s raid")) end
+    end
+  end
+  self:councilChanged()
 end
 
 function Registry:councilChanged()
@@ -1189,30 +1206,30 @@ function Registry:handle(m, sender, trusted, signed)
   -- the raid leader's list of officers in
   if m.t == "COUNCIL_IN" then
     if not secured or not trusted or (self.ctx.hosting and self.ctx.hosting()) then return {} end
-    self.councilIn = { from = sender, names = m.names, raidName = m.rn }
-    -- the welcome, once per raid: proof this client is in the raid the leader named
-    local raid = m.rn or (sender .. "'s raid")
-    if self.confirmedBy and self.welcomedTo ~= raid then
-      self.welcomedTo = raid
-      if self.ctx.notify then self.ctx.notify("welcome_raid", sender, raid) end
-    end
-    self:councilChanged()
+    -- kept per sender; only the leader who confirmed our password is shown. It may get here
+    -- before that leader's WELCOME (whisper and raid traffic are not ordered), so WELCOME
+    -- picks it up then.
+    self.heardList = self.heardList or {}
+    self.heardList[nameKey(sender)] = { from = sender, names = m.names, raidName = m.rn }
+    self:adoptCouncilList()
     return {}
   end
 
   -- the raid leader asks who is in: answer with a HELLO of our own, whispered
   if m.t == "ROLLCALL" then
-    if not secured or not signed or (self.ctx.hosting and self.ctx.hosting()) then return {} end
+    -- only from a client holding our password: anyone else gets no answer at all
+    if not secured or not trusted or (self.ctx.hosting and self.ctx.hosting()) then return {} end
     local now = self:now()
     if self.rollcallAnsweredAt and now - self.rollcallAnsweredAt < Registry.ROLLCALL_EVERY then return {} end
     self.rollcallAnsweredAt = now
-    self.helloAt = now
+    self.helloAt, self.helloTo = now, sender -- only that leader's answer counts
     return out({}, { t = "HELLO" }, "WHISPER", sender)
   end
 
   -- answers to our own /tlc join only
   if m.t == "WELCOME" or m.t == "MISMATCH" then
     if not secured or not self.helloAt then return {} end
+    if self.helloTo and nameKey(self.helloTo) ~= nameKey(sender) then return {} end
     if m.t == "MISMATCH" then
       self.helloAt = nil
       self.confirmedBy, self.mismatchWith = nil, sender
@@ -1224,8 +1241,9 @@ function Registry:handle(m, sender, trusted, signed)
     self.helloAt = nil
     local again = self.confirmedBy and nameKey(self.confirmedBy.name) == nameKey(sender)
     self.confirmedBy, self.mismatchWith = { name = sender, at = self:now() }, nil
-    if not again then self:notice("welcome", sender) end
-    self:councilChanged()
+    if again then self:councilChanged(); return {} end -- a roll call answered: nothing new to fetch
+    self:notice("welcome", sender)
+    self:adoptCouncilList()
     -- sessions we only saw as a viewer before the password was right
     return out({}, { t = "STATE_REQUEST" }, "WHISPER", sender)
   end
