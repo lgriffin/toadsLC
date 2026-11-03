@@ -6,8 +6,10 @@ ns.Commands = Commands
 
 local HELP = {
   "/tlc  open the Toads LC window: every command below has a button there (or click the minimap button)",
-  "/tlc begin <password>  raid leader: protect council traffic with a password for tonight",
-  "/tlc join <password>  officer: join the raid's protected council traffic",
+  "/tlc begin <password>  raid leader: begin tonight's raid; officers join with the same password",
+  "/tlc name <raid name>  raid leader: name tonight's raid; officers get \"Welcome to <raid name>\" when they join",
+  "/tlc join <password>  officer: join the raid's loot council (the leader sees you join)",
+  "/tlc who  raid leader: which officers have joined with the password; officer: check yours with the leader again",
   "/tlc end  forget the raid password",
   "/tlc session <item> [seconds]  open a loot session for the council",
   "/tlc roll <item> [seconds]  plain priority roll in raid chat",
@@ -233,6 +235,13 @@ end
 function handlers.begin(rest) ns.App.beginRaid(rest) end
 function handlers.join(rest) ns.App.joinRaid(rest) end
 handlers["end"] = function() ns.App.endRaid() end
+function handlers.name(rest) ns.App.nameRaid(rest) end
+
+function handlers.who()
+  ns.App.checkCouncil()
+  -- the answers come in over the next few seconds; the list prints once they have
+  C_Timer.After(3, function() ns.Chat.print("Council: " .. ns.Main.councilText()) end)
+end
 
 function handlers.version() ns.Version.check() end
 handlers.versions = handlers.version

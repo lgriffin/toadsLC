@@ -165,8 +165,9 @@ describe("addon in a fake client", function()
     W.slash("begin short")
     assert.matches("at least 6 characters", W.printed[#W.printed])
     W.slash("begin frog pond 42")
-    assert.matches("Raid begun%. Council traffic is now signed and encrypted %(fingerprint %x+%)", W.printed[#W.printed])
-    assert.is_nil(_G.ToadsLCDB.settings.raid.password) -- only the derived key is stored
+    assert.matches("Raid begun: Poohtank's raid%. Council traffic is now signed and encrypted %(fingerprint %x+%)",
+      table.concat(W.printed, "\n"))
+    assert.is_nil(_G.ToadsLCCharDB.raid.password) -- only the derived key is stored
     W.slash("status")
     assert.matches("Raid password: set %(leading, fingerprint", table.concat(W.printed, "\n"))
     W.ns.App.import(sample)
@@ -180,9 +181,9 @@ describe("addon in a fake client", function()
   it("forgets the raid password after 12 hours without a reload", function()
     W.slash("begin frog pond 42")
     assert.is_not_nil(W.ns.App.secret())
-    _G.ToadsLCDB.settings.raid.at = W.ns.App.now() - 12 * 3600 - 1
+    _G.ToadsLCCharDB.raid.at = W.ns.App.now() - 12 * 3600 - 1
     assert.is_nil(W.ns.App.secret())
-    assert.is_nil(_G.ToadsLCDB.settings.raid)
+    assert.is_nil(_G.ToadsLCCharDB.raid)
   end)
 
   it("sends HELLO on /tlc join", function()

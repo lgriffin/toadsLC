@@ -21,7 +21,7 @@ Wire.MAC_BYTES = 16
 
 -- Messages only the council should read. The rest stay readable so raiders without the
 -- password can still follow a session's open, close and award.
-Wire.PRIVATE = { RESPONSE = true, VOTE = true, PROPOSE = true, STATE = true, RSP = true }
+Wire.PRIVATE = { RESPONSE = true, VOTE = true, PROPOSE = true, STATE = true, RSP = true, COUNCIL_IN = true }
 
 ---------------------------------------------------------------------------
 -- keys

@@ -22,10 +22,17 @@ function Store.init()
   for k, v in pairs(DEFAULT_SETTINGS) do
     if db.settings[k] == nil then db.settings[k] = v end
   end
+  db.settings.raid = nil -- before 0.2.8 the raid password was account-wide: Join or Begin again
   return db
 end
 
 function Store.settings() return ToadsLCDB.settings end
+
+-- raid() / setRaid(r): tonight's raid password (its derived key, whether this character
+-- leads, when it was set). Per character: an alt on the same account is its own officer and
+-- must Join for itself, never inherit "you lead" from the main.
+function Store.raid() return Store.layout().raid end
+function Store.setRaid(r) Store.layout().raid = r end
 
 -- layout(): this character's window sizes, positions and scale (ToadsLCCharDB, per character,
 -- since each character may play on a different screen). Read lazily: frames can be built

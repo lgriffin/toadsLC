@@ -315,10 +315,11 @@ function App.status()
   end
   local _, ids = Store.records(false)
   Chat.print(string.format("Sessions waiting for export: %d", #ids))
-  local secret, raid = App.secret(), Store.settings().raid
+  local secret, raid = App.secret(), Store.raid()
   if secret then
     Chat.print(string.format("Raid password: set (%s, fingerprint %s). Every officer should see the same fingerprint.",
       raid.hosting and "leading" or "joined", secret.fingerprint))
+    Chat.print("Council: " .. ns.Main.councilText())
   else
     Chat.print("Raid password: none. Council traffic is unsigned; /tlc begin <password> to protect it.")
   end
@@ -382,7 +383,12 @@ end
 -- Ask the leaders for any open session: at login, and on joining a group. The second ask
 -- covers a leader whose client was still loading.
 function App.askState()
-  C_Timer.After(5, function() send(App.registry:requestState()); send(ns.Loot.request()) end)
+  C_Timer.After(5, function()
+    send(App.registry:requestState()); send(ns.Loot.request())
+    -- after a reload: check the password again, so the council list is right on both sides
+    local raid = Store.raid()
+    if App.secret() and raid and IsInGroup() then send(raid.hosting and App.registry:rollcall() or App.registry:hello()) end
+  end)
   C_Timer.After(20, function() if IsInGroup() then send(App.registry:requestState()); send(ns.Loot.request()) end end)
 end
 
@@ -395,9 +401,9 @@ local secretCache
 
 -- secret() -> the raid password's keys, or nil (none set, or set more than 12 hours ago)
 function App.secret()
-  local r = Store.settings().raid
+  local r = Store.raid()
   if r and App.now() - (r.at or 0) > RAID_MAX_AGE then
-    Store.settings().raid, r, secretCache = nil, nil, nil
+    r, secretCache = nil, nil; Store.setRaid(nil)
   end
   if not r then return nil end
   if not secretCache or secretCache.hex ~= r.key then
@@ -408,40 +414,82 @@ function App.secret()
   return secretCache
 end
 
+-- raidName() -> what the leader called tonight's raid (shown to every officer who joins)
+function App.raidName()
+  local r = App.secret() and Store.raid()
+  if not r then return nil end
+  if r.hosting then return r.name or (Roster.me() .. "'s raid") end
+  local c = App.registry and App.registry.councilIn
+  return c and c.raidName
+end
+
+-- nameRaid(name): the leader names (or renames) tonight's raid; officers see it at once
+function App.nameRaid(name)
+  local r = App.secret() and Store.raid()
+  name = name and name:match("^%s*(.-)%s*$") or ""
+  if not r or not r.hosting then Chat.print("Only the raid leader who began the raid can name it."); return end
+  if name == "" then Chat.print("Tonight's raid: " .. App.raidName() .. ". /tlc name <raid name> to rename it."); return end
+  r.name = name:sub(1, 60)
+  Chat.print("Tonight's raid is now called " .. r.name .. ".")
+  send({ { msg = App.registry:councilInMsg(), dist = "RAID" } })
+end
+
 local function setPassword(password, hosting)
   if not password or #password < 6 then
     Chat.print("Use a password of at least 6 characters, shared with the council only (not raid chat).")
     return false
   end
   local key = ns.Wire.keyFromPassword(password)
-  Store.settings().raid = { key = ns.Crypto.hex(key), hosting = hosting, at = App.now() }
+  Store.setRaid({ key = ns.Crypto.hex(key), hosting = hosting, at = App.now() })
   return true
 end
 
-function App.beginRaid(password)
+function App.beginRaid(password, name)
   if not setPassword(password, true) then return end
-  Chat.print("Raid begun. Council traffic is now signed and encrypted (fingerprint " .. App.secret().fingerprint
-    .. "). Officers: /tlc join <the same password>.")
+  name = name and name:match("^%s*(.-)%s*$") or ""
+  if name ~= "" then Store.raid().name = name:sub(1, 60) end
+  App.registry:forgetCouncil()
+  Chat.print("Raid begun: " .. App.raidName() .. ". Council traffic is now signed and encrypted (fingerprint "
+    .. App.secret().fingerprint .. "). Officers: Join council with the same password; you'll see each one join here.")
+  -- officers who typed the password before we began get confirmed now
+  send(App.registry:rollcall())
+end
+
+-- checkCouncil(): the leader asks who is in again; an officer checks with the leader again
+function App.checkCouncil()
+  local raid = Store.raid()
+  if not App.secret() or not raid then Chat.print("No raid password is set: Begin raid or Join first."); return end
+  if raid.hosting then
+    Chat.print("Asking the council who's in…")
+    send(App.registry:rollcall())
+  else
+    Chat.print("Checking your password with the raid leader…")
+    send(App.registry:hello())
+  end
 end
 
 function App.joinRaid(password)
   if not setPassword(password, false) then return end
+  App.registry:forgetCouncil()
   Chat.print("Joined with fingerprint " .. App.secret().fingerprint .. "; checking it with the raid leader…")
   send(App.registry:hello())
 end
 
 function App.endRaid()
-  Store.settings().raid = nil
+  Store.setRaid(nil)
   secretCache = nil
+  App.registry:forgetCouncil()
   Chat.print("Raid password cleared. Council traffic is unsigned again.")
 end
 
 local NOTICES = {
   welcome = "Raid password matches NAME's. You're in the council traffic.",
+  joined = "NAME joined the council (same raid password).",
+  welcome_raid = "Welcome to RAID! You're on the loot council; NAME leads.",
   mismatch = "NAME tried to join with a different raid password.",
-  mismatch_self = "Your raid password doesn't match NAME's. Check it with them, then /tlc join <password> again.",
-  noanswer = "No raid leader answered. Check they typed /tlc begin, then /tlc join <password> again.",
-  needjoin = "NAME's loot council uses a raid password. Type /tlc join <password> to see and vote in it.",
+  mismatch_self = "Your raid password doesn't match NAME's. Check it with them, End raid, then Join council again.",
+  noanswer = "No raid leader answered yet. Once they press Begin raid you'll be confirmed by yourself.",
+  needjoin = "NAME's loot council uses a raid password. Join council (/tlc) with it to see and vote.",
   untrusted = "NAME is on the council but hasn't joined with the raid password, so their votes are ignored.",
   sealed = "NAME sent council traffic under a different raid password. Compare /tlc status fingerprints.",
 }
@@ -458,11 +506,16 @@ local function start()
     group = Roster.group,
     onChange = onChange,
     secured = function() return App.secret() ~= nil end,
-    hosting = function() return App.secret() ~= nil and Store.settings().raid.hosting end,
-    notify = function(kind, name)
+    hosting = function() return App.secret() ~= nil and Store.raid().hosting end,
+    raidName = function() return App.raidName() end,
+    notify = function(kind, name, raid)
       local line = NOTICES[kind]
-      if line then Chat.print((line:gsub("NAME", name or ""))) end
+      if line then
+        line = line:gsub("NAME", function() return name or "" end):gsub("RAID", function() return raid or "" end)
+        Chat.print(line)
+      end
       if kind == "welcome" then send(ns.Loot.request()) end -- the list we could not check before
+      if ns.Main.refresh then ns.Main.refresh() end -- the Raid & council page's who's-in line
     end,
   })
   Comms.init(function(msg, sender, trusted, signed)
