@@ -1,6 +1,6 @@
 # Testing in a 5-man dungeon
 
-A run through the loot list, the whole pool at once (**Start all**) and trading the winners,
+A run through the loot list, drops opening for answers as they're looted, the council's vote and trading the winners,
 with five players in a dungeon instead of a 25-man raid. Allow about an hour: a normal or
 heroic run plus a few minutes after each boss.
 
@@ -13,10 +13,9 @@ party to a raid instead doesn't help: TBC keeps raid groups out of 5-man dungeon
 
 | Player | Needs | Does |
 | --- | --- | --- |
-| **Leader** | party lead, the priority list imported | records the loot, starts items, awards, trades the winners |
-| **Officer** | the priority list imported, named on its council | votes in the council frame |
-| **Raider 1, 2** | the addon | answers with BiS / Upgrade / OffSpec / Pass |
-| **Raider 3** (optional) | no addon, or the addon turned off | answers with `/roll` and `/roll 99` |
+| **Leader** | party lead, the priority list imported, begins the raid | records the loot, awards, trades the winners |
+| **Officer** | the priority list imported, joined with the password | votes in the item's live poll |
+| **Raider 1, 2, 3** | the addon | answers with BiS / Main / OS / Pass in `/tlc loot` |
 
 Write down which item went to whom as you go; you check the trades against it at the end.
 
@@ -24,112 +23,93 @@ Write down which item went to whom as you go; you check the trades against it at
 
 1. **Everyone:** install the build you're testing, `/reload`, and check `/tlc status` says
    the same version on every client.
-2. **Leader and Officer: import a list whose council is your party.** In a party there are
-   no assistants, so the only council members are the session leader and the names on the
-   list's `council`. The test list's council is Poohtank, Hadur, Anasazi and Gally; unless
-   those are your characters, your officer can't vote. Open
-   [fixtures/priority.test.json](../fixtures/priority.test.json), change
-   `"council": [ ... ]` near the top to the Leader's and Officer's character names, then
-   `/tlc import`, paste, **Import**. `/tlc status` should show about a thousand items.
-   (Dungeon blues aren't on the test list, so they're ranked by roll only. That is fine for
-   this test.)
+2. **Leader and Officer:** import [fixtures/priority.test.json](../fixtures/priority.test.json)
+   (`/tlc import`, paste, **Import**). `/tlc status` should show about a thousand items.
+   Dungeon blues aren't on the test list, so everyone on main spec ties and the council picks.
+   That is fine for this test. You don't need to edit the list's `council`: joining with the
+   raid password (step 4) puts the Officer on the council.
 3. **Leader:** `/tlc loot auto on` (in case it was ever turned off), then `/tlc loot party on`.
    The addon says it records party drops too, rare and up. `/tlc loot clear` empties
    anything left from a raid.
 4. **Leader:** `/tlc begin <password>`; **Officer:** `/tlc join <password>`. The Officer is
-   told the password matches. Optional, but it's how a raid night runs.
+   told the password matches. This is what makes the Officer council, so don't skip it.
 5. **Leader:** set the loot method to **Master Looter**, yourself as looter, threshold
-   **Rare** (right-click your portrait, Loot Method). Then the blues stay on the corpse
-   until you take them, nobody's Need roll takes them first, and you end up holding them
-   to trade. Dungeon drops are soulbound, so they have to be traded within two hours of
+   **Rare** (right-click your portrait, Loot Method). The council's items then come straight
+   into your bags when you open the corpse (chat says *Looted for the council: ...*), so you
+   end up holding them to trade. Dungeon drops are soulbound, so they have to be traded within two hours of
    looting.
 
 ## After each boss: record the drops
 
-6. **Leader:** open the corpse. Chat says *Added to the loot list: [item], ...*. Loot the
-   items to yourself, close the window, and pull the next pack.
+6. **Leader:** open the corpse. Chat says *Added to the loot list: [item], ...* and *Looted for
+   the council: ...*, and party chat gets *Open for answers: [item] ...*. Close the window and
+   pull the next pack.
    - Opening the same corpse again adds nothing new.
    - Raiders and the Officer opening the corpse add nothing: only the leader records.
-7. **Officer and raiders:** `/tlc loot`. You see the same list as the Leader, every row
-   *waiting*. That shows the list reaches the party.
-8. **Leader:** after two or three bosses, `/tlc loot announce`. Party chat gets the numbered
-   list.
+   - Raiders can't open, reset or remove items from `/tlc loot`: check one tries.
+7. **Raiders:** the small answer window pops up (if you're in combat, only once it ends).
+   Between pulls, type `/tlc loot`: each item has BiS / Main / OS / Pass. Answer each one
+   differently (BiS, Main, OS, Pass). Pass prints a line in chat. Press **Change** on one and
+   pick another answer.
+8. **Officer:** `/tlc loot`, then click an item. The live poll lists every raider who answered,
+   main spec and BiS first, and on the Loot page the status reads *taking answers: x of y*,
+   the same as the Leader's. Click a name to vote; the Leader sees your name beside it. Hover
+   the item: the tooltip shows the votes.
 
 If nothing was added: check `/tlc loot party` is on (step 3), that you're party leader,
 and that the drop was blue or better. `/tlc loot add [item]` puts an item on by hand, so
 you can carry on and report it.
 
-## One at a time
+## Award
 
-9. **Leader:** `/tlc loot 1` (or **Session** on row 1). Party chat announces it with a
-   countdown; the row says *rolling*.
-10. **Raiders 1 and 2:** the loot window pops up. One presses **BiS**, the other **OffSpec**,
-    and one of them adds a note. Each button press rolls for you.
-11. **Raider 3** (no addon): types `/roll` in party chat before the countdown ends.
-12. **Officer:** the council frame lists all three. Check the BiS roll is ranked above the
-    OffSpec roll, then left-click a row to vote.
-13. **Leader:** when the countdown ends, award (the vote leader, or **list says**). Party
-    chat names the winner; on `/tlc loot` the row says *to Name*.
-14. **Leader:** `/tlc undo`, then award to someone else with a reason, to check undo and
-    an override. The row follows each change.
-15. **Leader:** `/tlc loot roll 2` for a plain roll: no council frame this time, just
-    `/roll` in chat and the winner posted when it closes. `/tlc award` records it.
-
-## The whole pool at once
-
-Have at least three items waiting. Loot another boss, or `/tlc loot add [item]` a few
-things from your bags.
-
-16. **Leader:** **Start all** on the loot list (or `/tlc loot all 120`). Party chat gets one
-    warning and the numbered list; every waiting row says *rolling*.
-17. **Raiders 1 and 2:** one loot window, a row per item. Answer each row differently (BiS on
-    one, OffSpec on another, Pass on a third). Answered rows drop off; the window closes once
-    everything is answered or the time runs out.
-18. **Raider 3** (no addon): type `/roll` once. It should **not** count for any item while
-    several are open (it can't tell which one it's for). Check the council frame.
-19. **Officer:** step through the items with **<** and **>**. Each shows only the answers
-    given for that item, with the right roll next to each name.
-20. **Leader:** award each item on its own. Award at least two items to **the same raider**
-    and one to someone else; you need that for the trade test.
+9. **Leader:** after a boss or two, open an item from the Loot page and vote too. The status
+   reads *council deciding*. Press **Award** on the winner's row. Party chat names the winner;
+   the row and the Officer's row both say *awarded to Name*, and hovering the item shows who
+   it went to.
+10. **Officer:** try to award: you can't, only the Leader can.
+11. **Leader:** right-click the awarded row and **Reset…**: it goes back to *waiting to open*.
+    Open and award it again, this time to someone the list doesn't pick, with a reason.
+12. **Leader:** award at least two items to **the same raider** and one to someone else; you
+    need that for the trade test.
 
 ## Handing out: trades
 
-21. **Leader:** `/tlc trade`. It lists what you owe each winner, and flags anything not in
+13. **Leader:** `/tlc trade`. It lists what you owe each winner, and flags anything not in
     your bags.
-22. **Leader:** open a trade with the raider who won two items. Both go into the trade
+14. **Leader:** open a trade with the raider who won two items. Both go into the trade
     window by themselves. Check them against your notes, then both press **Trade**.
-23. **Leader:** `/tlc trade` again: that raider is gone from the list. Opening another
+15. **Leader:** `/tlc trade` again: that raider is gone from the list. Opening another
     trade with them puts nothing in.
-24. **Leader:** with the other winner, cancel the first trade, then trade again. The item
+16. **Leader:** with the other winner, cancel the first trade, then trade again. The item
     goes in both times; it only counts as handed over once a trade completes.
-25. **Leader:** `/reload`, then `/tlc trade`: what's still owed survives the reload.
-26. **Leader:** `/tlc trade done <name>` for anyone you handed something to some other way,
+17. **Leader:** `/reload`, then `/tlc trade`: what's still owed survives the reload.
+18. **Leader:** `/tlc trade done <name>` for anyone you handed something to some other way,
     and `/tlc trade off` / `on` to check a trade stays empty while it's off.
 
 ## Officer reloads mid-run
 
-27. **Officer:** `/reload` while an item is open, or between bosses. Within about 20 seconds
-    `/tlc loot` shows the whole list again with its marks (the Leader sends it), and an open
-    session comes back in the council frame.
+19. **Officer and a raider:** `/reload` while an item is open. Within about 20 seconds
+    `/tlc loot` shows the whole list again with its statuses (the Leader sends it). The
+    raider's answer is still there and they aren't asked again.
 
 ## When you're done
 
-28. **Leader:** `/tlc trade`, and `/tlc trade done <name>` for every winner still listed.
+20. **Leader:** `/tlc trade`, and `/tlc trade done <name>` for every winner still listed.
     Otherwise, for the next 12 hours, a trade with one of them puts the test item in by
     itself if it's still in your bags.
-29. **Leader:** `/tlc loot party off`, `/tlc loot clear`, then `/tlc export clear` (or
+21. **Leader:** `/tlc loot party off`, `/tlc loot clear`, then `/tlc export clear` (or
     `/tlc export` first, if you want the JSON for the bug report). The test awards are real
     sessions as far as the addon knows; clearing them keeps them out of the next raid's
     export.
-30. **Leader and Officer:** import the real priority list from the site again before the raid.
+22. **Leader and Officer:** import the real priority list from the site again before the raid.
 
 ## Without a party: /tlc sim
 
 `/tlc sim` runs in a party you lead (never in a raid group), with a fake raid of twelve
 answering. Use it to warm up before the dungeon, or with fewer than five people:
 
-- `/tlc sim drop`, two or three times, then **Start all** on `/tlc loot`: the fake raid
-  answers every row, and the party's own buttons roll for real.
+- `/tlc sim drop`, two or three times, then **Open all** on the Loot page: the fake raid
+  answers every row, and the party answers for real.
 - Sim items are never shared, saved or traded: `/tlc trade` ignores them. The trade test
   needs real awards, as above.
 - `/tlc sim stop` clears it.

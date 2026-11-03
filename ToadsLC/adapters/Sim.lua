@@ -1,6 +1,6 @@
 -- Sim: /tlc sim fakes a boss kill outside a raid. It opens a council session for each of
 -- the boss's drops (from data/RaidLoot.lua), one after the other, and a fake raid answers
--- them: button responses, /roll lines, passes, the odd duplicate roll, and a fake officer's
+-- them: BiS / Main / OS / Pass presses (no rolls), the odd change of mind, and a fake officer's
 -- vote once responses close. The player answers in the candidate frame like any raider.
 --
 -- Simulated sessions go through the same registry as real ones. Their ids start with
@@ -230,20 +230,15 @@ local function answer(s, r, window)
     wants = x < 0.2 and "main" or x < 0.5 and "offspec" or x < 0.75 and "pass" or nil
   end
   if not wants then return end
-  local max = wants == "offspec" and s.rules.offspecRollMax or 100
   after(Sim.random(window), function()
     if s.phase ~= "open" then return end
-    if wants == "pass" then rsp(s, r, "pass"); return end
-    local how = Sim.random()
-    if how < 0.7 then -- button, then the roll a second or two later
-      rsp(s, r, wants)
-      after(Sim.random(2), function() roll(s, r, max) end)
-    elseif how < 0.9 then -- just /roll
-      roll(s, r, max)
-    else -- button only: never rolls
-      rsp(s, r, wants)
+    -- council items take no rolls: a button press is the whole answer
+    rsp(s, r, wants)
+    if wants ~= "pass" and chance(0.1) then -- changes their mind a little later
+      after(2, function()
+        if s.phase == "open" then rsp(s, r, wants == "offspec" and "main" or "offspec") end
+      end)
     end
-    if chance(0.08) then after(2, function() roll(s, r, max) end) end -- rolls twice: ignored as a duplicate
   end)
 end
 

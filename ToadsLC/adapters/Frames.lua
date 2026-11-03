@@ -191,9 +191,25 @@ local function fitWindow(f)
     local k = (saved.scale or f.scale) / f.scale
     f:SetPoint(saved.point, UIParent, saved.relPoint, saved.x * k, saved.y * k)
   else
-    f:SetPoint("CENTER", UIParent, "CENTER", f.sizing.x or 0, f.sizing.y or 0)
+    local point = f.sizing.point or "CENTER"
+    f:SetPoint(point, UIParent, point, f.sizing.x or 0, f.sizing.y or 0)
   end
   resized(f, w, h)
+end
+
+-- fitRows(f, h): a window that sizes itself to what it shows (the answer window): a new height,
+-- kept within the screen, with its top edge left where it was
+local function fitRows(f, h)
+  local _, minH, _, maxH = bounds(f)
+  h = math.max(minH, math.min(maxH, h))
+  if math.abs((f.height or 0) - h) < 1 then return end
+  local top, left = f.GetTop and f:GetTop(), f.GetLeft and f:GetLeft()
+  f:SetHeight(h)
+  if top and left then
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+  end
+  resized(f, f.width, h)
 end
 
 -- window(name, title, opts): opts.w, opts.h default size; minW, minH, maxW, maxH;
@@ -367,20 +383,29 @@ local function openForMe()
   for _, id in ipairs(reg.order) do
     local s = reg:get(id)
     if s.mode == "session" and s.phase == "open" and s:timeLeft(ns.App.now()) > 0 then
-      if s.myResponse then done[#done + 1] = s else waiting[#waiting + 1] = s end
+      if Frames.myAnswer(s) then done[#done + 1] = s else waiting[#waiting + 1] = s end
     end
   end
   for _, s in ipairs(done) do waiting[#waiting + 1] = s end
   return waiting, #waiting - #done
 end
 
-local ANSWER = { bis = "BiS", main = "Upgrade", offspec = "OffSpec", pass = "Pass" }
+local ANSWER = { bis = "BiS", main = "Main", offspec = "OS", pass = "Pass" }
+Frames.ANSWER = ANSWER
 
--- myAnswerText(s): what I answered, and my roll once it is in
+-- myAnswer(s) -> what this character answered: the button pressed here (kept over a reload),
+-- or, on a council client, the entry the leader recorded
+function Frames.myAnswer(s)
+  if s.myResponse then return s.myResponse end
+  local me = ns.Roster.me()
+  local e = s:entryFor(me)
+  if e then return e.response end
+  if s.passed[Priority.nameKey(me)] then return "pass" end
+end
+
+-- myAnswerText(s): what I answered; the council votes on it once answers close
 local function myAnswerText(s)
-  local e = s:entryFor(ns.Roster.me())
-  local roll = e and e.roll and string.format(", rolled %d", e.roll) or ""
-  return colourText(GREEN, "Your answer: " .. (ANSWER[s.myResponse] or s.myResponse) .. roll)
+  return colourText(GREEN, "Your answer: " .. (ANSWER[Frames.myAnswer(s)] or "?")) .. colourText(GREY, "  (Change to answer again)")
 end
 
 -- tierText(s): where this player stands, coloured so it reads at a glance: green for top
@@ -388,7 +413,7 @@ end
 local function tierText(s)
   local me = ns.Roster.specOf("player")
   local tier = s.item and Priority.tierOf(s.item, { player = ns.Roster.me(), class = me.class, spec = me.spec })
-  if not s.item then return "Not on the priority list: BiS first, then highest roll" end
+  if not s.item then return "Not on the priority list: main spec and BiS first, then the council votes" end
   if tier == 1 then return colourText(GREEN, string.format("Top priority: you're tier 1 of %d", #s.item.priority)) end
   if tier then return string.format("You're tier %d of %d", tier, #s.item.priority) end
   return colourText(GREY, "Your spec is not on the list for this item")
@@ -404,7 +429,7 @@ end
 local function buildCandidate()
   cand = window("ToadsLCCandidateFrame", "Toads LC: loot", {
     w = 500, h = 96 + CAND_ROWS * CAND_H, minW = 420, minH = 96 + CAND_H, maxW = 900, maxH = 96 + CAND_MAX * CAND_H,
-    y = 180, layout = function(f, w, h)
+    point = "TOPRIGHT", x = -40, y = -120, layout = function(f, w, h)
       f.visible = math.max(1, math.min(CAND_MAX, math.floor((h - 96) / CAND_H)))
       local rowW = w - 24
       for _, row in ipairs(f.rows) do
@@ -418,11 +443,13 @@ local function buildCandidate()
     end,
   })
   cand.offset = 0
+  cand.changing = {} -- session id -> showing the answer buttons again
   cand.durations = {} -- "id:closesAt" -> the most time left seen, the countdown bar's full length
   local function answer(row, response)
     return function()
       if not row.session then return end
       ns.App.respond(row.session.id, response, cand.note:GetText())
+      cand.changing[row.session.id] = nil
       cand.note:SetText("")
       Frames.refreshCandidate()
     end
@@ -458,22 +485,24 @@ local function buildCandidate()
     row.hover = itemHover(row, function() return row.session end)
     row.hover:SetPoint("LEFT", 2, 0)
     row.hover:SetSize(280, 36)
-    -- BiS and Upgrade both roll 1-100; the council sees BiS ranked first
-    row.bis = button(row, "BiS", 40, answer(row, "bis"))
-    row.bis:SetPoint("BOTTOMRIGHT", -176, 2)
-    tip(row.bis, "Best in slot", "Rolls 1-100 for you. Ranked by priority tier first, then BiS ahead of Upgrade, then roll.")
-    row.up = button(row, "Upgrade", 64, answer(row, "main"))
+    -- no rolls: the answer goes to the council, who see it ranked by priority and vote
+    row.bis = button(row, "BiS", 44, answer(row, "bis"))
+    row.bis:SetPoint("BOTTOMRIGHT", -152, 2)
+    tip(row.bis, "Best in slot", "Main spec, and best in slot for you. The council sees it ranked by priority tier, BiS first.")
+    row.up = button(row, "Main", 50, answer(row, "main"))
     row.up:SetPoint("LEFT", row.bis, "RIGHT", 2, 0)
-    tip(row.up, "Upgrade", "Rolls 1-100 for you. Ranked by priority tier first, after BiS answers in the same tier, then roll.")
-    row.off = button(row, "OffSpec", 64, answer(row, "offspec"))
+    tip(row.up, "Main spec", "An upgrade for your main spec. Ranked by priority tier, after BiS answers in the same tier.")
+    row.off = button(row, "OS", 44, answer(row, "offspec"))
     row.off:SetPoint("LEFT", row.up, "RIGHT", 2, 0)
-    tip(row.off, "Off-spec", function()
-      local max = row.session and row.session.rules.offspecRollMax or 99
-      return string.format("Rolls 1-%d for you. Off-spec answers rank after every BiS and Upgrade answer; the council makes the final call.", max)
-    end)
+    tip(row.off, "Off-spec", "For your off-spec. Ranked after every main spec answer; the council makes the final call.")
     row.pass = button(row, "Pass", 44, answer(row, "pass"))
     row.pass:SetPoint("LEFT", row.off, "RIGHT", 2, 0)
-    tip(row.pass, "Pass", "You're out for this item. Nothing is rolled.")
+    tip(row.pass, "Pass", "You don't want this item.")
+    row.change = button(row, "Change", 64, function()
+      if row.session then cand.changing[row.session.id] = true; Frames.refreshCandidate() end
+    end)
+    row.change:SetPoint("BOTTOMRIGHT", -2, 2)
+    tip(row.change, "Change your answer", "Changed your mind? Pick again while the item is still taking answers.")
     cand.rows[i] = row
   end
   cand.more = cand:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -506,7 +535,15 @@ end
 function Frames.refreshCandidate()
   if not cand then return end
   local list, waiting = openForMe()
-  if waiting == 0 then cand:Hide(); return end
+  local changing = false
+  for _, s in ipairs(list) do if cand.changing[s.id] then changing = true end end
+  if waiting == 0 and not changing then cand:Hide(); return end
+  -- one row per item, up to what fits, whenever it opens or the number of items changes: a
+  -- window once sized for two items never hides the rest (a drag still resizes it in between)
+  if not cand:IsShown() or cand.fittedFor ~= #list then
+    cand.fittedFor = #list
+    fitRows(cand, 96 + math.min(#list, CAND_MAX) * CAND_H)
+  end
   local shown = cand.visible
   cand.offset = math.max(0, math.min(cand.offset, #list - shown))
   cand.title:SetText(#list == 1 and "Toads LC: loot" or string.format("Toads LC: loot (%d items, %d to answer)",
@@ -523,8 +560,10 @@ function Frames.refreshCandidate()
       row:Show()
       row.icon:SetTexture(iconOf(s.itemId))
       row.item:SetText(s.itemLink or s.itemName)
-      row.tier:SetText(s.myResponse and myAnswerText(s) or tierText(s))
-      for _, b in ipairs({ row.bis, row.up, row.off, row.pass }) do b:SetShown(not s.myResponse) end
+      local answered = Frames.myAnswer(s) ~= nil and not cand.changing[s.id]
+      row.tier:SetText(answered and myAnswerText(s) or tierText(s))
+      for _, b in ipairs({ row.bis, row.up, row.off, row.pass }) do b:SetShown(not answered) end
+      row.change:SetShown(answered)
       -- the bar's full length is the most time seen left, not closesAt - openedAt: a session that
       -- reached us from the leader carries the leader's clock in openedAt
       local left = s:countdown(now)
@@ -563,24 +602,45 @@ end
 ---------------------------------------------------------------------------
 
 local council
-local ROWS, ROWS_MAX = 30, 40 -- candidate rows at the default size, and at most
+local ROWS, ROWS_MAX = 14, 40 -- candidate rows at the default size, and at most
 
 -- the Note column takes whatever width the others leave
 local COLS = {
   { key = "name", title = "Name", w = 100 },
   { key = "spec", title = "Spec", w = 96 },
   { key = "tier", title = "Tier", w = 34 },
-  { key = "resp", title = "Response", w = 64 },
-  { key = "roll", title = "Roll", w = 40 },
-  { key = "votes", title = "Votes", w = 60 },
-  { key = "note", title = "Note", w = 186 },
+  { key = "resp", title = "Answer", w = 52 },
+  { key = "votes", title = "Council votes", w = 150 },
+  { key = "note", title = "Note", w = 108 },
 }
 
--- responseText(s, e): the Response cell, named like the raider's buttons; BiS stands out
+-- responseText(s, e): the Answer cell, named like the raider's buttons; BiS stands out
 local function responseText(s, e)
-  if e.max == s.rules.offspecRollMax or e.response == "offspec" then return colourText(BLUE, "OffSpec") end
+  if e.max == s.rules.offspecRollMax or e.response == "offspec" then return colourText(BLUE, "OS") end
   if e.response == "bis" then return colourText(ORANGE, "BiS") end
-  return "Upgrade"
+  return "Main"
+end
+Frames.responseText = responseText
+
+-- voteTally(s) -> { [nameKey of the raider] = { officer, ... } }, officers in council spelling
+function Frames.voteTally(s)
+  local spell = {}
+  for _, n in ipairs({ s.leader, unpack(s.council or {}) }) do spell[Priority.nameKey(n)] = n end
+  local out = {}
+  for officer, c in pairs(s.votes) do
+    local k = Priority.nameKey(c)
+    out[k] = out[k] or {}
+    table.insert(out[k], spell[officer] or (officer:gsub("^%l", string.upper)))
+  end
+  for _, list in pairs(out) do table.sort(list) end
+  return out
+end
+
+-- tallyText(names, mine): "3: Ann, Bob, Cal", the officer's own vote in green
+function Frames.tallyText(names, mine)
+  if not names or #names == 0 then return "" end
+  local text = string.format("%d: %s", #names, table.concat(names, ", "))
+  return mine and colourText(GREEN, text) or text
 end
 
 local function shownSession()
@@ -620,11 +680,11 @@ end
 local function buildCouncil()
   council = window("ToadsLCCouncilFrame", "Toads LC: council", {
     w = 640, h = 150 + ROWS * ROW_H, minW = 560, minH = 150 + 5 * ROW_H, maxW = 1400, maxH = 150 + ROWS_MAX * ROW_H,
-    layout = function(f, w, h)
+    point = "RIGHT", x = -40, y = -40, layout = function(f, w, h)
       f.visible = math.max(5, math.min(ROWS_MAX, math.floor((h - 150) / ROW_H)))
       for _, row in ipairs(f.rows) do
         row:SetWidth(w - 40)
-        row.cells.note:SetWidth(w - 454)
+        row.cells.note:SetWidth(w - 496)
       end
       Frames.refresh()
     end,
@@ -687,7 +747,7 @@ local function buildCouncil()
     end)
     row:SetScript("OnEnter", function(self)
       local s = shownSession()
-      if not s or not self.entry or not self.voters or s.rules.votesVisibleTo ~= "council" then return end
+      if not s or not self.entry or not self.voters then return end
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:AddLine("Votes for " .. self.entry.player)
       for _, v in ipairs(self.voters) do GameTooltip:AddLine((v:gsub("^%l", string.upper)), 1, 1, 1) end
@@ -831,13 +891,7 @@ function Frames.refresh()
 
   local r = s:result()
   local opts = s:awardOptions()
-  local counts = s:voteCounts()
-  local voters = {}
-  for officer, c in pairs(s.votes) do
-    local k = Priority.nameKey(c)
-    voters[k] = voters[k] or {}
-    table.insert(voters[k], officer)
-  end
+  local voters = Frames.voteTally(s)
   local tied = {}
   for _, n in ipairs(r.tied or {}) do tied[Priority.nameKey(n)] = true end
 
@@ -882,17 +936,14 @@ function Frames.refresh()
         says = "list says (priority)"
       end
       local resp = e.ignored or responseText(s, e)
-      local n = counts[k] or 0
       row.voters = voters[k]
-      local pips = string.rep("|TInterface\\COMMON\\Indicator-Green:12|t", math.min(n, 6))
-      if myVote and Priority.nameKey(myVote) == k then pips = pips .. colourText(GREEN, " (you)") end
+      local mine = myVote and Priority.nameKey(myVote) == k
       local cells = {
         name = classText(e.class, e.player),
         spec = specLabel,
         tier = tier and tostring(tier) or "-",
         resp = resp,
-        roll = e.roll and tostring(e.roll) or colourText(GREY, "…"),
-        votes = pips,
+        votes = Frames.tallyText(voters[k], mine),
         note = (says and (CHECK .. colourText(GREEN, " " .. says .. "  ")) or "") .. (e.note or ""),
       }
       for key, fs in pairs(row.cells) do
@@ -916,7 +967,8 @@ function Frames.refresh()
       (s.proposal.reason ~= "" and (": " .. s.proposal.reason) or "")))
   else
     council.footer:SetText(s.phase == "done" and s:awardLine()
-      or colourText(GREY, "Click a raider to vote for them; right-click for more (propose" .. (leader and ", set spec, award)." or ").")))
+      or colourText(GREY, "Click a raider to vote for them (click again to move your vote); right-click for more (propose"
+        .. (leader and ", set spec, award)." or ").")))
   end
 
   local canAward = leader and s.phase ~= "done"
@@ -938,7 +990,7 @@ function Frames.refresh()
   for _, b in pairs({ council.awardTo, council.noAward }) do b:SetShown(canAward) end
   council.closeBtn:SetShown(leader and s.phase == "open")
   council.closeBtn:SetText(s:inFinalCall(ns.App.now()) and "Close now" or "Last call (10 s)")
-  council.reroll:SetShown(leader and s.phase == "voting" and r.tie)
+  council.reroll:SetShown(leader and s.mode == "roll" and s.phase == "voting" and r.tie)
   council.propose:SetShown(s.phase ~= "done")
 end
 
@@ -970,7 +1022,7 @@ end
 ---------------------------------------------------------------------------
 
 local lootFrame
-local LOOT_ROWS, LOOT_MAX = 16, 30 -- rows at the default size, and at most
+local LOOT_ROWS, LOOT_MAX = 12, 30 -- rows at the default size, and at most
 local LOOT_H = 22
 
 local function lootEntries() return ns.Loot.list.entries end

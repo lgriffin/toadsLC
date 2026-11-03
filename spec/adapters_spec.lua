@@ -63,7 +63,7 @@ describe("addon in a fake client", function()
   it("runs /tlc roll from open to award and writes the record", function()
     W.ns.App.import(sample)
     W.slash("roll |cffa335ee|Hitem:28830::::::::70:::::|h[Dragonspine Trophy]|h|r 30")
-    assert.matches("^RAID: %[ToadsLC%] Roll: .*Dragonspine Trophy.*%(30 s%)%. /roll Upgrade, /roll 99 OffSpec%. Priority: BM Hunter = Rogue > Fury", W.chatText())
+    assert.matches("^RAID: %[ToadsLC%] Roll: .*Dragonspine Trophy.*%(30 s%)%. /roll Main, /roll 99 OS%. Priority: BM Hunter = Rogue > Fury", W.chatText())
     W.fire("CHAT_MSG_SYSTEM", "Anasazi rolls 41 (1-100)")
     W.fire("CHAT_MSG_SYSTEM", "Gally rolls 97 (1-100)")
     W.fire("CHAT_MSG_SYSTEM", "Hadur rolls 88 (1-100)")
@@ -71,7 +71,7 @@ describe("addon in a fake client", function()
     W.fire("CHAT_MSG_SYSTEM", "Gally rolls 12 (1-100)")
     W.tick(31)
     local last = W.chat[#W.chat].text
-    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (OffSpec).", last)
+    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (OS).", last)
     W.slash("award")
     assert.are.equal("RAID_WARNING", W.chat[#W.chat - 1].channel)
     assert.are.same({ "WHISPER", "Anasazi" }, { W.chat[#W.chat].channel, W.chat[#W.chat].target })
@@ -206,7 +206,8 @@ describe("addon in a fake client", function()
     msg = W.ns.Codec.decode(msg)
     assert.are.equal("SESSION_OPEN", msg.t)
     assert.are.same({ "Poohtank", "Hadur", "Anasazi", "Gally" }, msg.co)
-    assert.is_true(_G.ToadsLCCouncilFrame:IsShown())
+    -- the council works from the Loot page; the answer window opens for everyone
+    assert.is_nil(_G.ToadsLCCouncilFrame)
     assert.is_true(_G.ToadsLCCandidateFrame:IsShown())
   end)
 
@@ -334,12 +335,12 @@ describe("/tlc sim", function()
   end)
 
   it("puts a window back at this character's saved size", function()
-    W.install({ charDb = { scale = 1, frames = { ToadsLCLootFrame = { w = 700, h = 110 + 5 * 22, point = "CENTER",
-      relPoint = "CENTER", x = 0, y = 0 } } } })
+    W.install({ charDb = { scale = 1, layoutVersion = 2, frames = { ToadsLCLootFrame = { w = 700, h = 110 + 5 * 22,
+      point = "CENTER", relPoint = "CENTER", x = 0, y = 0 } } } })
     W.load()
     W.fire("PLAYER_LOGIN")
     W.slash("sim drop gruul the dragonkiller")
-    W.slash("loot")
+    W.slash("loot window")
     local f = _G.ToadsLCLootFrame
     assert.are.equal(700, f.width)
     assert.are.equal(5, f.visible)
@@ -409,7 +410,7 @@ describe("/tlc sim", function()
     assert.is_false(Main.unlocked()) -- locked again once practice ends
   end)
 
-  it("runs a fake kill through responses, rolls, the officer's vote and the next item", function()
+  it("runs a fake kill through answers, the officer's vote and the next item", function()
     W.slash("sim Gruul the Dragonkiller 20")
     assert.matches("%[sim%] Gruul the Dragonkiller killed", table.concat(W.printed, "\n"))
     local first = sims()[1]
@@ -422,13 +423,11 @@ describe("/tlc sim", function()
     for _ = 1, 20 do W.tick(1) end
     assert.are.equal("voting", first.phase)
     assert.is_true(#first.candidates > 0)
-    local rolled = false
     for _, e in ipairs(first.candidates) do
       assert.is_truthy(W.ns.Sim.who(e.player)) -- every candidate is a fake raider with a class and spec
       assert.is_truthy(e.class)
-      if e.roll then rolled = true end
+      assert.is_nil(e.roll) -- the fake raid answers with buttons only
     end
-    assert.is_true(rolled)
     for _ = 1, 3 do W.tick(1) end
     assert.is_truthy(first.votes.toadmaster)
     assert.are.equal(2, #sims()) -- the second drop opened once the first closed
@@ -495,6 +494,104 @@ describe("/tlc sim", function()
     end
     assert.are.same({ "SESSION_CLOSE", "AWARD" }, types)
     assert.are.equal(0, #W.chat)
+  end)
+end)
+
+describe("0.3 fixes from the first live raid", function()
+  local sample = H.read("fixtures/priority.sample.json")
+
+  it("sends a chunk the server throttled again a second later, instead of losing the message", function()
+    W.install()
+    local sent, refuse = {}, 3
+    _G.C_ChatInfo.SendAddonMessage = function(_, text)
+      if refuse > 0 then refuse = refuse - 1; return 3 end -- Enum.SendAddonMessageResult.AddonMessageThrottle
+      sent[#sent + 1] = text
+      return 0
+    end
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+    W.slash("session [Dragonspine Trophy]")
+    local queued = W.ns.Comms.pending()
+    assert.is_true(queued > 0)
+    for f in pairs(W.eventFrames) do
+      if f.events.CHAT_MSG_ADDON then
+        f.scripts.OnUpdate(f, 1) -- refused: held, not dropped
+        assert.are.equal(queued, W.ns.Comms.pending())
+        f.scripts.OnUpdate(f, 1) -- no retry inside the same second
+        assert.are.equal(0, #sent)
+        for _ = 1, 3 do W.time = W.time + 1; f.scripts.OnUpdate(f, 1) end
+        for _ = 1, 20 do W.time = W.time + 1; f.scripts.OnUpdate(f, 1) end
+      end
+    end
+    assert.are.equal(0, W.ns.Comms.pending())
+    assert.are.equal(queued, #sent) -- every chunk went in the end, in order
+  end)
+
+  it("puts windows saved before 0.3 back to the new defaults once", function()
+    W.install({ charDb = { scale = 1, frames = { ToadsLCCandidateFrame = { w = 420, h = 140, point = "CENTER",
+      relPoint = "CENTER", x = 0, y = 0 } } } })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    assert.are.same({}, _G.ToadsLCCharDB.frames)
+    assert.are.equal(W.ns.Store.LAYOUT_VERSION, _G.ToadsLCCharDB.layoutVersion)
+  end)
+
+  it("exports tonight's raid only, under its name, and leaves earlier practice sessions to Export all", function()
+    W.install()
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+    W.slash("roll [Dragonspine Trophy]") -- a test before the raid
+    W.tick(31)
+    W.slash("award Anasazi")
+    W.tick(60)
+    W.ns.App.beginRaid("frog pond 42", "Gruul night")
+    W.slash("session [Dragonspine Trophy] 20")
+    W.tick(21)
+    W.slash("award Gally")
+    W.slash("export")
+    local doc = assert(W.ns.Codec.decode(_G.ToadsLCIOFrame.box:GetText()))
+    assert.is_true(W.ns.Codec.validateSession(doc))
+    assert.are.equal("Gruul night", doc.raidName)
+    assert.are.equal(1, #doc.sessions)
+    assert.are.equal("Gally", doc.sessions[1].awardedTo)
+    assert.matches("1 older one left out", _G.ToadsLCIOFrame.status:GetText())
+    W.slash("export all")
+    doc = assert(W.ns.Codec.decode(_G.ToadsLCIOFrame.box:GetText()))
+    assert.are.equal(2, #doc.sessions)
+    assert.is_nil(doc.raidName)
+  end)
+
+  it("lists traded items in tonight's history", function()
+    W.install({ bags = { [0] = { [1] = { 28830 } } } })
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+    W.slash("session [Dragonspine Trophy] 20")
+    W.tick(21)
+    W.slash("award Anasazi")
+    local recs = W.ns.App.awardsTonight()
+    assert.are.equal(1, #recs)
+    assert.is_false(recs[1].traded)
+    W.trade("Anasazi")
+    W.endTrade(true)
+    recs = W.ns.App.awardsTonight()
+    assert.is_true(recs[1].traded)
+    W.slash("history")
+    assert.matches("Anasazi, traded", W.printed[#W.printed])
+  end)
+
+  it("tells the raider what they answered, Pass included, and rolls nothing", function()
+    W.install()
+    W.load()
+    W.fire("PLAYER_LOGIN")
+    W.ns.App.import(sample)
+    W.slash("session [Dragonspine Trophy] 20")
+    local s = W.ns.App.registry:latest()
+    W.ns.App.respond(s.id, "pass")
+    assert.matches("Answered Pass for", W.printed[#W.printed])
+    assert.are.equal(0, #W.rolls)
   end)
 end)
 

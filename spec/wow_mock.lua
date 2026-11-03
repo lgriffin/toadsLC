@@ -141,10 +141,18 @@ local function setup(C, G, opts)
   -- C.candidates (names eligible for every slot; the whole group by default), C.given[slot] = name
   C.lootMethod, C.lootThreshold, C.given = opts.lootMethod or "group", opts.lootThreshold or 2, {}
   C.candidates = opts.candidates
-  G.GetLootMethod = function()
-    if C.lootMethod ~= "master" then return C.lootMethod end
-    for i, m in ipairs(C.group) do if m.name == C.me then return "master", 0, i end end
-  end
+  -- the TBC Anniversary client: C_PartyInfo.GetLootMethod() answers Enum.LootMethod numbers
+  -- (2 = master looter) and IsMasterLooter() says whether it's us; there is no "master" string
+  local METHOD = { freeforall = 0, roundrobin = 1, master = 2, group = 3, needbeforegreed = 4 }
+  G.C_PartyInfo = {
+    GetLootMethod = function()
+      local m = METHOD[C.lootMethod] or 3
+      if m ~= 2 then return m end
+      for i, g in ipairs(C.group) do if g.name == C.me then return 2, 0, i end end
+      return 2
+    end,
+  }
+  G.IsMasterLooter = function() return C.lootMethod == "master" end
   G.GetLootThreshold = function() return C.lootThreshold end
   G.GetMasterLootCandidate = function(_, i)
     if C.candidates then return C.candidates[i] end

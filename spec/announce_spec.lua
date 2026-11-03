@@ -47,6 +47,7 @@ describe("announcing awards and trades in a fake client", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     W.ns.App.import(sample)
+    W.ns.Store.settings().openOnDrop = false -- these hand items out with plain rolls, one by one
     W.loot(CORPSE)
   end)
 
@@ -67,11 +68,11 @@ describe("announcing awards and trades in a fake client", function()
   end)
 
   it("uses the loot master's wording, and goes quiet when turned off", function()
-    W.slash("announce award Grats {name} on {item} ({response}, {roll})!")
-    assert.matches("Awards will read: Grats Anasazi on %[Dragonspine Trophy%] %(BiS, 87%)!", W.printed[#W.printed])
+    W.slash("announce award Grats {name} on {item} ({response}, {spec})!")
+    assert.matches("Awards will read: Grats Anasazi on %[Dragonspine Trophy%] %(BiS, Rogue%)!", W.printed[#W.printed])
     W.slash("announce trade {name} has {item} now, from {by}")
     award(1, "Anasazi")
-    assert.matches("Grats Anasazi on .*Dragonspine Trophy.*%(Upgrade, 41%)!", chat())
+    assert.matches("Grats Anasazi on .*Dragonspine Trophy.*%(Main, Rogue%)!", chat())
     W.trade("Anasazi")
     W.endTrade(true)
     assert.matches("Anasazi has .*%[Item 28830%].* now, from " .. W.ns.Roster.me(), chat())
@@ -86,7 +87,7 @@ describe("announcing awards and trades in a fake client", function()
     for i = before + 1, #W.chat do assert.is_nil(W.chat[i].text:find("Gally has", 1, true)) end
   end)
 
-  it("calls an off-spec button press off-spec when it is awarded before a roll", function()
+  it("calls an OS answer OS when it is awarded", function()
     W.slash("loot 1 30")
     local s = W.ns.App.registry:latest()
     -- what the leader holds after Anasazi presses OffSpec and before any roll
@@ -94,8 +95,8 @@ describe("announcing awards and trades in a fake client", function()
     s.live[W.ns.Priority.nameKey("Anasazi")] = #s.candidates
     s.awardedTo = "Anasazi"
     local f = s:awardFields()
-    assert.are.equal("OffSpec", f.response)
-    assert.are.equal("OffSpec", f.details)
+    assert.are.equal("OS", f.response)
+    assert.are.equal("OS", f.details)
     assert.is_nil(f.tier)
   end)
 

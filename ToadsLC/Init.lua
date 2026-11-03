@@ -60,10 +60,15 @@ end
 
 local function onChange(s, what)
   local me = Roster.me()
+  if what == "SESSION_OPEN" or what == "STATE" then
+    -- what this character answered before a reload (raiders get no snapshot of their own entry)
+    if not s.myResponse then s.myResponse = Store.answer(s.id) end
+  end
   if what == "SESSION_OPEN" then
     if s.mode == "session" then
-      if s:isCouncil(me) and not ns.Sim.hidesCouncil(s) then Frames.showCouncil(s.id) end
-      Frames.showCandidate(s)
+      -- the council works from the Loot page (/tlc); the answer window waits for the end of a
+      -- pull, so items opened as they drop never pop up mid-fight
+      App.showCandidateSoon()
     end
   elseif what == "SESSION_CLOSE" then
     Frames.hideCandidate(s)
@@ -84,7 +89,7 @@ local function onChange(s, what)
     end
   elseif what == "AWARD" then
     local set = Store.settings()
-    if s:isLeader(me) and set.announceAward ~= false then App.announce(s, s:awardLine(set.awardMessage), true) end
+    if s:isLeader(me) and set.announceAward ~= false and not s.quietAward then App.announce(s, s:awardLine(set.awardMessage), true) end
     if s:isLeader(me) and set.whisperAward ~= false then App.whisperWinner(s, s:whisperLine(set.whisperMessage)) end
     ns.Trade.onAward(s)
   elseif what == "STATE" then
@@ -132,9 +137,45 @@ end
 -- entry, whose item, zone and boss are used; quiet leaves the raid chat line to the caller
 -- (/tlc loot all); untimed keeps it open until the council's last call (the whole pool at once).
 -- A single item takes answers for the officers' setting (itemSeconds, 15 s by default).
+-- canStart(): who hands out loot. With a raid begun (a password set), only the character who
+-- began it; with none, the raid leader (or an assist when the leader has no addon running it).
+-- Outside a group anyone may, to try things out. /tlc sim practice is always allowed.
+function App.canStart()
+  if ns.Sim.active then return true end
+  if not IsInGroup() then return true end
+  local raid = App.secret() and Store.raid()
+  if raid then return raid.hosting == true and Roster.canLead() end
+  return Roster.canLead()
+end
+
+function App.cantStartWhy()
+  local raid = App.secret() and Store.raid()
+  if raid and not raid.hosting then return "Only the raid leader who began the raid hands out loot." end
+  if not Roster.canLead() then return "Only the raid leader (or the assist who began the raid) hands out loot." end
+  return nil
+end
+
+-- councilNames() -> the council for a new item: the priority list's council[] (or the raid's
+-- leader and assists), plus every officer who has joined with tonight's password
+function App.councilNames()
+  local out, seen = {}, {}
+  local function add(n)
+    local k = n and Priority.nameKey(n)
+    if k and k ~= "" and not seen[k] and #out < 40 then seen[k] = true; out[#out + 1] = n end
+  end
+  for _, n in ipairs(Roster.council()) do add(n) end
+  if App.secret() and App.registry then
+    local raid = Store.raid()
+    local list = App.registry:councilList(raid and raid.hosting)
+    if list.leader then add(list.leader) end
+    for _, n in ipairs(list.names) do if list.state[Priority.nameKey(n)] ~= "bad" then add(n) end end
+  end
+  return out
+end
+
 function App.open(itemText, seconds, mode, entry, quiet, untimed)
-  if not Roster.canLead() then
-    Chat.print("You need raid lead or assist to start a " .. mode .. ".")
+  if not App.canStart() then
+    Chat.print(App.cantStartWhy() or ("You can't start a " .. mode .. " here."))
     return
   end
   local itemId, name, link
@@ -156,7 +197,7 @@ function App.open(itemText, seconds, mode, entry, quiet, untimed)
     itemId = itemId, itemName = name, itemLink = link,
     zone = entry and entry.zone ~= "" and entry.zone or (GetInstanceInfo()) or "",
     boss = entry and entry.boss ~= "" and entry.boss or lastBoss,
-    council = mode == "session" and Roster.council() or {},
+    council = mode == "session" and App.councilNames() or {},
     rules = rules, mode = mode,
     seconds = seconds or Store.settings().itemSeconds or rules.sessionSeconds, untimed = untimed,
     priorityVersion = pdb.version,
@@ -167,12 +208,27 @@ function App.open(itemText, seconds, mode, entry, quiet, untimed)
   return s
 end
 
+-- the answer window, now or once this pull is over
+local candidateAfterCombat = false
+function App.showCandidateSoon()
+  if InCombatLockdown and InCombatLockdown() then candidateAfterCombat = true; return end
+  Frames.showCandidate()
+end
+
+App.ANSWERS = { bis = "BiS", main = "Main", offspec = "OS", pass = "Pass" }
+
+-- respond(id, response, note): BiS / Main / OS / Pass. Council sessions take no roll: the
+-- council votes on who gets it. An answer can be changed while the item is open.
 function App.respond(id, response, note)
   local s = App.registry:get(id)
   if not s then return end
+  if s.phase ~= "open" then Chat.print(s.itemName .. " isn't taking answers any more."); return end
   send(App.registry:respond(id, response, note, Roster.specOf("player")))
-  if response == "bis" or response == "main" then RandomRoll(1, 100)
-  elseif response == "offspec" then RandomRoll(1, s.rules.offspecRollMax) end
+  Store.setAnswer(id, response, App.now())
+  Chat.print(string.format("Answered %s for %s%s.", App.ANSWERS[response] or response, s.itemLink or s.itemName,
+    response ~= "pass" and " The council votes once answers are in" or ""))
+  if Frames.refreshCandidate then Frames.refreshCandidate() end
+  if ns.Main.refresh then ns.Main.refresh() end
 end
 
 function App.vote(id, player) send(App.registry:vote(id, player)) end
@@ -186,7 +242,7 @@ function App.reroll(id) send(App.registry:reroll(id)) end
 function App.award(id, player, via, reason)
   local s = App.registry:get(id)
   if not s or not s:isLeader(Roster.me()) then
-    Chat.print("Only the session leader can award.")
+    Chat.print("Only the raid leader who opened this item can award it.")
     return
   end
   send(App.registry:award(id, player, via, reason))
@@ -283,10 +339,20 @@ function App.undoImport()
   end
 end
 
+-- raidStart() -> when tonight's raid began on this character (Begin raid or Join), or nil
+function App.raidStart()
+  local r = App.secret() and Store.raid()
+  return r and r.at or nil
+end
+
+-- export(all): Export new is tonight's raid only (sessions opened since Begin raid), named after
+-- it, so practice items from before the raid stay out; Export all is every saved session
 function App.export(all)
-  local records = Store.records(all)
+  local since = not all and App.raidStart() or nil
+  local records = Store.records(all, since)
   local pdb = Store.priorities()
   local realm = (GetRealmName() or ""):gsub("%s", "")
+  local raidName = App.raidName()
   local doc = {
     format = Codec.SESSION_FORMAT, version = Codec.VERSION,
     exportedAt = Codec.isoTime(App.now()),
@@ -295,12 +361,17 @@ function App.export(all)
     priorityVersion = pdb and pdb.version or Codec.null,
     sessions = Codec.array(records),
   }
+  if raidName and not all then doc.raidName = raidName end
+  local older = 0
+  if since then older = #Store.records(false) - #records end
+  local what = raidName and not all and (raidName .. ": ") or ""
   Frames.showExport(Codec.encode(doc, "  "),
-    string.format("%d session%s. After the site accepts it: /tlc export clear", #records, #records == 1 and "" or "s"))
+    string.format("%s%d session%s.%s After the site accepts it: Mark as sent", what, #records, #records == 1 and "" or "s",
+      older > 0 and string.format(" %d older one%s left out (Export all has them).", older, older == 1 and "" or "s") or ""))
 end
 
 function App.exportClear()
-  local _, ids = Store.records(false)
+  local _, ids = Store.records(false, App.raidStart())
   Store.markExported(ids)
   Chat.print(string.format("Marked %d session%s as sent.", #ids, #ids == 1 and "" or "s"))
 end
@@ -354,13 +425,48 @@ end
 -- tonight() -> the session records saved tonight (the history page, /tlc history)
 function App.tonight() return Store.since(loginTime - 6 * 3600) end
 
+-- awardsTonight() -> { { id, itemId, itemName, awardedTo, reason, traded, at }, ... }, oldest first:
+-- every item handed out (or not) tonight that this client knows of, whoever ran it: the
+-- sessions it saw, the loot list, and the records it saved, once each by session id
+function App.awardsTonight()
+  local out, seen = {}, {}
+  local since = loginTime - 6 * 3600
+  local function add(id, itemId, name, to, reason, at)
+    if not id or seen[id] or ns.Sim.isSim({ id = id }) then return end
+    seen[id] = true
+    if at and at < since then return end
+    out[#out + 1] = { id = id, itemId = itemId, itemName = name, awardedTo = to, reason = reason,
+                      traded = ns.Trade.traded(id), at = at or 0 }
+  end
+  local reg = App.registry
+  for _, id in ipairs(reg and reg.order or {}) do
+    local s = reg.sessions[id]
+    if s.phase == "done" then add(s.id, s.itemId, s.itemName, s.awardedTo, s.override and s.override.reason, s.openedAt) end
+  end
+  for _, e in ipairs(ns.Loot.list.entries) do
+    if e.session and (e.status == "awarded" or e.status == "none") then
+      add(e.session, e.itemId, e.name, e.winner, nil, e.at)
+    end
+  end
+  for _, r in ipairs(App.tonight()) do
+    if r and r.id and r.closedAt ~= Codec.null then
+      local ov = r.override ~= Codec.null and r.override or nil
+      add(r.id, r.itemId ~= Codec.null and r.itemId or nil, r.itemName,
+        r.awardedTo ~= Codec.null and r.awardedTo or nil, ov and ov.reason, nil)
+    end
+  end
+  table.sort(out, function(a, b) return a.at < b.at end)
+  return out
+end
+
 function App.history()
-  local recs = App.tonight()
+  local recs = App.awardsTonight()
   if #recs == 0 then Chat.print("No awards tonight."); return end
   for _, r in ipairs(recs) do
-    local to = r.awardedTo ~= Codec.null and r.awardedTo or "not awarded"
-    local ov = (r.override ~= Codec.null and r.override) and (" (override: " .. (r.override.reason or "") .. ")") or ""
-    Chat.print(string.format("%s: %s%s", r.itemName, to, ov))
+    local to = r.awardedTo or "not awarded"
+    local ov = r.reason and r.reason ~= "" and (" (override: " .. r.reason .. ")") or ""
+    local tr = r.awardedTo and (r.traded and ", traded" or ", still to trade") or ""
+    Chat.print(string.format("%s: %s%s%s", r.itemName, to, tr, ov))
   end
 end
 
@@ -542,6 +648,7 @@ local function start()
   frame:RegisterEvent("GROUP_ROSTER_UPDATE")
   frame:RegisterEvent("ENCOUNTER_END")
   frame:RegisterEvent("BOSS_KILL")
+  frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 end
 
 frame:RegisterEvent("PLAYER_LOGIN")
@@ -561,6 +668,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
   elseif event == "ENCOUNTER_END" then
     local _, encounterName, _, _, success = ...
     if success == 1 then lastBoss = encounterName or "" end
+  elseif event == "PLAYER_REGEN_ENABLED" then
+    if candidateAfterCombat then candidateAfterCombat = false; Frames.showCandidate() end
   elseif event == "BOSS_KILL" then
     local _, encounterName = ...
     lastBoss = encounterName or lastBoss

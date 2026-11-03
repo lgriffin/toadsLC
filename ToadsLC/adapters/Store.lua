@@ -42,7 +42,31 @@ function Store.layout()
   local db = ToadsLCCharDB
   db.frames = db.frames or {} -- frame name -> { w, h, point, relPoint, x, y }
   db.scale = db.scale or 1
+  -- 0.3: windows got smaller defaults and places that don't overlap; sizes saved before that
+  -- (often huge, or a loot window two rows tall) start again from the new defaults once
+  if (db.layoutVersion or 0) < Store.LAYOUT_VERSION then
+    db.frames, db.layoutVersion = {}, Store.LAYOUT_VERSION
+  end
   return db
+end
+Store.LAYOUT_VERSION = 2
+
+-- answer(id) / setAnswer(id, response, now): what this character answered for an item, kept
+-- over a reload (a raider's client has no other copy of it) for a night
+Store.ANSWER_MAX_AGE = 12 * 3600
+function Store.answer(id)
+  local a = id and Store.layout().answers
+  local row = a and a[id]
+  return row and row.r or nil
+end
+
+function Store.setAnswer(id, response, now)
+  local db = Store.layout()
+  db.answers = db.answers or {}
+  for k, row in pairs(db.answers) do
+    if now - (row.at or 0) > Store.ANSWER_MAX_AGE then db.answers[k] = nil end
+  end
+  db.answers[id] = { r = response, at = now }
 end
 
 function Store.priorities() return ToadsLCDB.priorities end
@@ -81,12 +105,13 @@ function Store.record(id)
   return row and Codec.decode(row.json)
 end
 
--- records(all) -> decoded records, oldest first; unexported ones only unless all.
-function Store.records(all)
+-- records(all, since) -> decoded records, oldest first; unexported ones only unless all, and
+-- only those opened at or after since when it is given (tonight's raid)
+function Store.records(all, since)
   local out, ids = {}, {}
   for _, id in ipairs(ToadsLCDB.order) do
     local row = ToadsLCDB.sessions[id]
-    if row and (all or not row.exported) then
+    if row and (all or not row.exported) and (not since or (row.openedAt or 0) >= since) then
       local rec = Codec.decode(row.json)
       if rec then out[#out + 1] = rec; ids[#ids + 1] = id end
     end

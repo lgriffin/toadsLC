@@ -39,7 +39,7 @@ describe("LootList", function()
     local e = l:add({ key = "a", itemId = 1, name = "One" })
     local s = { id = "s1", phase = "open" }
     assert.is_true(LootList.follow(e, s))
-    assert.are.equal("rolling", LootList.label(e))
+    assert.are.equal("taking answers", LootList.label(e))
     assert.are.equal(e, l:forSession("s1"))
     assert.is_false(LootList.follow(e, s))
     s.phase = "voting"
@@ -48,7 +48,7 @@ describe("LootList", function()
     assert.is_false(LootList.startable(e))
     s.phase, s.awardedTo = "done", "Gally"
     LootList.follow(e, s)
-    assert.are.equal("to Gally", LootList.label(e))
+    assert.are.equal("awarded to Gally", LootList.label(e))
     s.awardedTo = nil
     LootList.follow(e, s)
     assert.are.equal("not awarded", LootList.label(e))
@@ -90,6 +90,7 @@ describe("/tlc loot in a fake client", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     W.ns.App.import(sample)
+    W.ns.Store.settings().openOnDrop = false -- these start each item by hand
   end)
 
   it("records a corpse's epics as the leader loots it, once, and leaves badges and blues out", function()
@@ -167,7 +168,7 @@ describe("/tlc loot in a fake client", function()
     assert.are.equal("awarded", entries()[1].status)
     assert.are.equal("Anasazi", entries()[1].winner)
     W.slash("loot roll 1")
-    assert.matches("Dragonspine Trophy is to Anasazi already", W.printed[#W.printed])
+    assert.matches("Dragonspine Trophy is awarded to Anasazi already", W.printed[#W.printed])
     W.slash("undo")
     assert.are.equal("voting", entries()[1].status) -- reopened with the session
   end)
@@ -180,7 +181,7 @@ describe("/tlc loot in a fake client", function()
     assert.are.equal("session", s.mode)
     assert.are.equal(29765, s.itemId)
     assert.are.equal("Gruul's Lair", s.zone)
-    assert.matches("Loot session: .*Leggings of the Fallen Hero", W.chatText())
+    assert.matches("Loot: .*Leggings of the Fallen Hero", W.chatText())
     assert.are.equal(s.id, entries()[2].session)
     assert.are.equal("waiting", entries()[3].status) -- the second token waits its turn
   end)
@@ -213,7 +214,7 @@ describe("/tlc loot in a fake client", function()
 
   it("shows the list in a frame, with start buttons for the leader", function()
     W.loot(CORPSE)
-    W.slash("loot")
+    W.slash("loot window")
     local f = _G.ToadsLCLootFrame
     assert.is_true(f:IsShown())
     local row = f.rows[1]
@@ -221,7 +222,7 @@ describe("/tlc loot in a fake client", function()
     assert.is_true(row.session:IsShown())
     row.session.scripts.OnClick(row.session)
     assert.are.equal("open", entries()[1].status)
-    assert.matches("rolling", f.rows[1].status:GetText())
+    assert.matches("taking answers", f.rows[1].status:GetText())
     assert.is_false(f.rows[1].session:IsShown())
     row.hover.scripts.OnEnter(row.hover)
     assert.matches("^item:28830", _G.GameTooltip.link)
@@ -291,7 +292,7 @@ describe("the loot list across a raid of clients", function()
     officer = W.client({ me = "Hadur", group = GROUP })
     rogue = W.client({ me = "Anasazi", group = GROUP })
     all = { leader, officer, rogue }
-    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    for _, c in ipairs(all) do c.ns.App.import(sample); c.ns.Store.settings().openOnDrop = false end
     W.deliver(all)
   end)
 
@@ -374,10 +375,11 @@ describe("the loot list across a raid of clients", function()
   end)
 end)
 
-describe("several items open at once", function()
+describe("several plain rolls open at once", function()
   local Session, reg, clock
-  local function open(id) return select(2, reg:open({ id = id, itemId = 1, itemName = id, council = {}, rules = {},
-                                                      mode = "session", seconds = 60 })) end
+  -- plain rolls (/tlc roll): council items take no rolls at all
+  local function open(id, mode) return select(2, reg:open({ id = id, itemId = 1, itemName = id, council = {}, rules = {},
+                                                      mode = mode or "roll", seconds = 60 })) end
   local function press(s, who, r) reg:handle({ t = "RSP", s = s.id, r = r or "main" }, who, true, false) end
   local function rollOf(s, who) local e = s:entryFor(who); return e and e.roll end
 
@@ -422,6 +424,31 @@ describe("several items open at once", function()
     assert.is_nil(rollOf(b, "Gally"))
   end)
 
+  it("never counts a /roll for a council item: the answer stands, with no roll", function()
+    local a = open("A", "session")
+    press(a, "Gally", "bis")
+    reg:roll("Gally", 33, 1, 100)
+    reg:roll("Anasazi", 44, 1, 100)
+    assert.is_nil(rollOf(a, "Gally"))
+    assert.are.equal("bis", a:entryFor("Gally").response)
+    assert.is_nil(a:entryFor("Anasazi"))
+    assert.are.equal("Gally", a:result().winner.player) -- ranked on the answer alone
+  end)
+
+  it("lets a raider change their answer while the item is open, Pass included", function()
+    local a = open("A", "session")
+    press(a, "Gally", "offspec")
+    press(a, "Gally", "bis")
+    assert.are.equal("bis", a:entryFor("Gally").response)
+    press(a, "Gally", "pass")
+    assert.is_nil(a:entryFor("Gally"))
+    assert.is_true(a.passed.gally)
+    press(a, "Gally", "main")
+    assert.are.equal("main", a:entryFor("Gally").response)
+    assert.is_nil(a.passed.gally)
+    assert.is_true(a:everyoneAnswered({ "Gally" }))
+  end)
+
   it("leaves a single item as it was: press then roll, or roll then press", function()
     local a = open("A")
     press(a, "Gally")
@@ -439,6 +466,7 @@ describe("/tlc loot all", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     W.ns.App.import(sample)
+    W.ns.Store.settings().openOnDrop = false
   end)
 
   local function open()
@@ -465,22 +493,26 @@ describe("/tlc loot all", function()
     assert.matches("3 items", cand.title:GetText())
     assert.is_true(cand.rows[3]:IsShown())
     assert.matches("open", cand.rows[1].timer:GetText())
-    -- the leader answers the second item, then the first; each roll lands on its own item
+    -- the leader answers the second item, then the first
     cand.rows[2].up.scripts.OnClick(cand.rows[2].up)
     -- answered items stay in the window, last, with the answer instead of the buttons
     assert.is_true(cand.rows[3]:IsShown())
     assert.are.equal(sessions[2], cand.rows[3].session)
-    assert.matches("Your answer: Upgrade", cand.rows[3].tier:GetText())
+    assert.matches("Your answer: Main", cand.rows[3].tier:GetText())
     assert.is_false(cand.rows[3].up:IsShown())
     assert.matches("3 items, 2 to answer", cand.title:GetText())
     cand.rows[1].off.scripts.OnClick(cand.rows[1].off)
-    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 81 (1-100)")
-    W.fire("CHAT_MSG_SYSTEM", "Poohtank rolls 22 (1-99)")
-    assert.are.equal(81, sessions[2]:entryFor("Poohtank").roll)
-    assert.are.equal(22, sessions[1]:entryFor("Poohtank").roll)
-    W.ns.Frames.refreshCandidate()
-    assert.matches("Your answer: Upgrade, rolled 81", cand.rows[3].tier:GetText())
-    W.fire("CHAT_MSG_SYSTEM", "Gally rolls 90 (1-100)") -- no button behind it: ignored
+    assert.are.equal(0, #W.rolls) -- no rolls: the council votes
+    assert.are.equal("main", sessions[2]:entryFor("Poohtank").response)
+    assert.are.equal("offspec", sessions[1]:entryFor("Poohtank").response)
+    -- changed their mind: Change brings the buttons back for that item
+    local row = cand.rows[3]
+    assert.is_true(row.change:IsShown())
+    row.change.scripts.OnClick(row.change)
+    assert.is_true(row.bis:IsShown())
+    row.bis.scripts.OnClick(row.bis)
+    assert.are.equal("bis", sessions[2]:entryFor("Poohtank").response)
+    W.fire("CHAT_MSG_SYSTEM", "Gally rolls 90 (1-100)") -- a /roll counts for nothing
     for _, s in ipairs(sessions) do assert.is_nil(s:entryFor("Gally")) end
     for _, e in ipairs(W.ns.Loot.list.entries) do assert.are.equal("open", e.status) end
     W.tick(3600)
@@ -529,7 +561,7 @@ describe("/tlc loot all", function()
 
   it("puts the Toads logo on every window", function()
     W.loot(CORPSE)
-    W.slash("loot")
+    W.slash("loot window")
     local frame = _G.ToadsLCLootFrame
     assert.are.equal("Interface\\AddOns\\ToadsLC\\Media\\logo", frame.logo.texture)
   end)
@@ -579,11 +611,11 @@ describe("/tlc loot all across a raid of clients", function()
     { name = "Anasazi", class = "ROGUE" }, { name = "Hadur", class = "SHAMAN", assist = true },
   }
 
-  it("matches a raider's button rolls to the items they answered", function()
+  it("takes each answer for the item it was pressed for, with no roll", function()
     local leader = W.client({ me = "Poohtank", group = GROUP })
     local rogue = W.client({ me = "Anasazi", group = GROUP })
     local all = { leader, rogue }
-    for _, c in ipairs(all) do c.ns.App.import(sample) end
+    for _, c in ipairs(all) do c.ns.App.import(sample); c.ns.Store.settings().openOnDrop = false end
     W.deliver(all)
     leader:loot(CORPSE)
     leader:slash("loot all")
@@ -593,15 +625,12 @@ describe("/tlc loot all across a raid of clients", function()
     local third, first = cand.rows[3].session.id, cand.rows[1].session.id
     cand.rows[3].bis.scripts.OnClick(cand.rows[3].bis)
     cand.rows[1].up.scripts.OnClick(cand.rows[1].up)
-    assert.are.same({ { 1, 100 }, { 1, 100 } }, rogue.rolls)
-    -- the roll lines reach the leader before the whispers do
-    leader:fire("CHAT_MSG_SYSTEM", "Anasazi rolls 64 (1-100)")
-    leader:fire("CHAT_MSG_SYSTEM", "Anasazi rolls 5 (1-100)")
+    assert.are.same({}, rogue.rolls) -- nobody rolls: the council votes
     W.deliver(all)
     local reg = leader.ns.App.registry
-    assert.are.equal(64, reg:get(third):entryFor("Anasazi").roll)
-    assert.are.equal(5, reg:get(first):entryFor("Anasazi").roll)
-    assert.are.equal("bis", reg:get(third):entryFor("Anasazi").response) -- BiS survives the roll landing first
+    assert.is_nil(reg:get(third):entryFor("Anasazi").roll)
+    assert.are.equal("bis", reg:get(third):entryFor("Anasazi").response)
     assert.are.equal("main", reg:get(first):entryFor("Anasazi").response)
+    assert.matches("Answered BiS for", table.concat(rogue.printed, "\n"))
   end)
 end)

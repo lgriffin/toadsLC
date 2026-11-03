@@ -71,7 +71,7 @@ describe("Session", function()
     local outs, s = raid.clients.Poohtank.reg:open({
       itemId = 28830, itemName = "Dragonspine Trophy", itemLink = "[Dragonspine Trophy]",
       zone = "Gruul's Lair", boss = "Gruul the Dragonkiller", council = council, rules = priorities.rules,
-      priorityVersion = priorities.exportedAt,
+      priorityVersion = priorities.exportedAt, mode = "roll", -- with rolls: a plain roll the council also votes on
     })
     raid.send("Poohtank", outs)
     raid.flush()
@@ -283,13 +283,13 @@ describe("Session", function()
     local reg = raid.clients.Poohtank.reg
     local _, s = reg:open({ itemId = 28830, itemName = "Dragonspine Trophy", itemLink = "[Dragonspine Trophy]",
                             mode = "roll", council = {}, rules = priorities.rules })
-    assert.are.equal("[ToadsLC] Roll: [Dragonspine Trophy] (30 s). /roll Upgrade, /roll 99 OffSpec. Priority: BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty.", s:openLine())
+    assert.are.equal("[ToadsLC] Roll: [Dragonspine Trophy] (30 s). /roll Main, /roll 99 OS. Priority: BM Hunter = Rogue > Fury > Arms > Enhance = Ret > Surv Hunter > Kitty.", s:openLine())
     reg:roll("Anasazi", 41, 1, 100)
     reg:roll("Gally", 97, 1, 100)
     reg:roll("Hadur", 88, 1, 100)
     reg:roll("Poohtank", 94, 1, 99)
     reg:close(s.id)
-    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (OffSpec).", s:resultLine())
+    assert.are.equal("[ToadsLC] Dragonspine Trophy: Anasazi wins (Rogue, tier 1, rolled 41). Gally 97 (Fury, tier 2), Hadur 88 (Enhance, tier 4), Poohtank 94 (OS).", s:resultLine())
   end)
 end)
 
@@ -305,7 +305,7 @@ describe("Session hardening", function()
     local raid = newRaid(ns, { "Poohtank", "Hadur", "Anasazi", "Gally", "Raider" }, priorities)
     local outs, s = raid.clients.Poohtank.reg:open({
       itemId = 28830, itemName = "Dragonspine Trophy", council = { "Poohtank", "Hadur", "Anasazi", "Gally" },
-      rules = priorities.rules,
+      rules = priorities.rules, mode = "roll",
     })
     raid.send("Poohtank", outs)
     raid.flush()
@@ -517,7 +517,7 @@ describe("Session with a raid password", function()
   local function setup(secrets)
     local raid = newRaid(ns, { "Poohtank", "Hadur", "Anasazi", "Gally", "Raider" }, priorities, secrets)
     local outs, s = raid.clients.Poohtank.reg:open({
-      itemId = 28830, itemName = "Dragonspine Trophy", council = council, rules = priorities.rules,
+      itemId = 28830, itemName = "Dragonspine Trophy", council = council, rules = priorities.rules, mode = "roll",
     })
     raid.send("Poohtank", outs)
     raid.flush()
@@ -787,5 +787,64 @@ describe("Session with a raid password", function()
     raid.send("Poohtank", { outs[#outs] }) -- the same signed AWARD again
     raid.flush()
     assert.is_nil(raid.clients.Hadur.reg:get(id).awardedTo)
+  end)
+end)
+
+describe("a council item with no rolls", function()
+  local ns, priorities
+  before_each(function()
+    ns = H.core()
+    priorities = assert(ns.Codec.decode(H.read("fixtures/priority.sample.json")))
+  end)
+
+  local function open(itemId, name)
+    local raid = newRaid(ns, { "Poohtank", "Hadur", "Anasazi", "Gally", "Croaker" }, priorities)
+    local outs, s = raid.clients.Poohtank.reg:open({
+      itemId = itemId or 28830, itemName = name or "Dragonspine Trophy", council = { "Poohtank", "Hadur" }, rules = priorities.rules,
+      mode = "session",
+    })
+    raid.send("Poohtank", outs)
+    raid.flush()
+    return raid, s
+  end
+
+  it("ranks answers main spec first, by tier, BiS ahead of Main, and leaves a tie to the council's votes", function()
+    local raid, s = open()
+    raid.act("Croaker", "respond", s.id, "offspec")
+    raid.act("Gally", "respond", s.id, "main")
+    raid.act("Anasazi", "respond", s.id, "bis")
+    local r = s:result()
+    assert.are.same({ "Anasazi", "Gally", "Croaker" }, { r.ranked[1].player, r.ranked[2].player, r.ranked[3].player })
+    assert.is_false(r.tie)
+    raid.act("Gally", "respond", s.id, "bis") -- Gally changes to BiS: still tier 2 behind the tier 1 rogue
+    assert.are.equal("Anasazi", s:result().winner.player)
+    assert.is_nil(s:entryFor("Anasazi").roll)
+  end)
+
+  it("flags equal answers as a tie and awards by the council's vote", function()
+    local raid, s = open(31000, "Some Unlisted Ring") -- not on the list: Main against Main is a tie
+    raid.act("Anasazi", "respond", s.id, "main")
+    raid.act("Gally", "respond", s.id, "main")
+    local r = s:result()
+    assert.is_true(r.tie)
+    assert.are.same({ "Anasazi", "Gally" }, r.tied)
+    raid.act("Poohtank", "close", s.id)
+    raid.act("Hadur", "vote", s.id, "Gally")
+    raid.act("Poohtank", "vote", s.id, "Gally")
+    local opts = s:awardOptions()
+    assert.are.equal("Gally", opts.votes)
+    assert.are.equal(2, opts.voteCount)
+    raid.act("Poohtank", "award", s.id, "Gally", "votes")
+    assert.are.equal("Gally", s.awardedTo)
+    assert.are.equal("votes", s:serialize().awardedVia)
+  end)
+
+  it("ignores /roll lines", function()
+    local raid, s = open()
+    raid.act("Anasazi", "respond", s.id, "main")
+    raid.roll("Anasazi", 41)
+    raid.roll("Gally", 99)
+    assert.is_nil(s:entryFor("Anasazi").roll)
+    assert.is_nil(s:entryFor("Gally"))
   end)
 end)
