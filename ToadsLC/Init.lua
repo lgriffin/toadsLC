@@ -399,6 +399,9 @@ function App.debug(itemText)
   Chat.print(string.format("Client %s (%s), interface %s, project %s (%s); ToadsLC %s", tostring(version), tostring(build),
     tostring(interface), tostring(WOW_PROJECT_ID), ns.Client.name(), App.VERSION))
   local T = ns.Tooltip
+  if App.hiddenRolls > 0 then
+    Chat.print(string.format("System chat hidden by the client: %d lines (any /roll in them was not counted)", App.hiddenRolls))
+  end
   Chat.print(string.format("Tooltip hooks: %s%s; priorities %s", #T.hooks > 0 and table.concat(T.hooks, ", ") or "none",
     T.dataProcessor and " + TooltipDataProcessor" or "", Store.settings().tooltip and "on" or "off (/tlc tooltip on)"))
   local p = Store.priorities()
@@ -473,8 +476,16 @@ end
 
 local frame = CreateFrame("Frame")
 
+-- hiddenRolls: system chat lines WoW Forever hid from the addon (chat lockdown), shown in
+-- /tlc debug, so a roll that never counted can be explained
+App.hiddenRolls = 0
+
 local function onRoll(text)
-  if ns.Client.secret(text) then return end -- WoW Forever hides system chat mid-fight
+  if ns.Client.secret(text) then
+    if App.hiddenRolls == 0 then Chat.debug("system chat is hidden by the client (lockdown); a /roll may be lost") end
+    App.hiddenRolls = App.hiddenRolls + 1
+    return
+  end
   local name, roll, min, max = ns.RollParser.parse(text)
   if not name then return end
   name = Roster.normalize(name)

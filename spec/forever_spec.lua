@@ -78,6 +78,8 @@ describe("on the WoW Forever client", function()
   it("ignores system chat it can't read mid-fight", function()
     leader:slash("roll " .. DST)
     assert.has_no.errors(function() leader:fire("CHAT_MSG_SYSTEM", { secret = true }) end)
+    leader:slash("debug")
+    assert.matches("System chat hidden by the client: 1 lines", leader:printedText())
   end)
 
   it("reads specs from the trait tree, its own and inspected", function()
