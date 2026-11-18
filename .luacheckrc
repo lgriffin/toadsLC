@@ -18,6 +18,7 @@ local wow_read = {
   "SendAddonMessage", "SendChatMessage", "StaticPopup_Show", "TooltipDataProcessor", "UIParent", "UnitClass",
   "UnitIsConnected", "UnitIsGroupAssistant", "UnitGUID", "GetTime", "UnitIsGroupLeader", "UnitIsUnit", "UnitName", "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
   "WOW_PROJECT_ID", "bit", "C_Container", "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
+  "C_Item", "C_Traits", "C_SpecializationInfo", "C_ClassTalents", "Constants", "issecretvalue", "WOW_PROJECT_CAMELOT",
   "ClearCursor", "ClickTradeButton", "GetTradePlayerItemLink", "TradeFrameRecipientNameText", "NUM_BAG_SLOTS",
   "Minimap", "GetCursorPosition", "IsMouseButtonDown", "ERR_TRADE_COMPLETE", "ERR_TRADE_CANCELLED", "ChatFontNormal", "ACCEPT", "CANCEL", "tinsert", "date", "time", "_G", "geterrorhandler",
 }

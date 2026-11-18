@@ -48,7 +48,7 @@ end
 function Loot.linkOf(e)
   if e.link then return e.link end
   local link
-  if e.itemId then link = select(2, GetItemInfo(e.itemId)) end
+  if e.itemId then link = select(2, ns.Client.itemInfo(e.itemId)) end
   if link then e.link = link end
   return link or ("[" .. e.name .. "]")
 end

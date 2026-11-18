@@ -180,7 +180,7 @@ end
 ---------------------------------------------------------------------------
 
 local function linkFor(it)
-  local _, link = GetItemInfo(it[1]) -- also asks the server for the item, for the icon and tooltip
+  local _, link = ns.Client.itemInfo(it[1]) -- also asks the server for the item, for the icon and tooltip
   return link or string.format("|c%s|Hitem:%d::::::::70:::::|h[%s]|h|r", QUALITY_COLOR[it[3]] or "ffffffff", it[1], it[2])
 end
 

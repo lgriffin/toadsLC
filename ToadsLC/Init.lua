@@ -12,11 +12,8 @@ local lastBoss = ""
 
 App.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(addonName, "Version") or "dev"
 
--- v1 runs on the TBC Classic client only; the WoW Forever port replaces the adapters.
-local function supportedClient()
-  return WOW_PROJECT_ID ~= nil and WOW_PROJECT_BURNING_CRUSADE_CLASSIC ~= nil
-     and WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC
-end
+-- Runs on the TBC Anniversary and WoW Forever clients; adapters/Client.lua holds the differences.
+local function supportedClient() return ns.Client.supported() end
 
 function App.now() return GetServerTime and GetServerTime() or time() end
 
@@ -127,7 +124,7 @@ function App.parseItem(text)
   end
   local link = text:find("|H") and text or nil
   if itemId and not link then
-    local _, l = GetItemInfo(itemId)
+    local _, l = ns.Client.itemInfo(itemId)
     link = l
   end
   return itemId, name, link or ("[" .. name .. "]")
@@ -399,8 +396,8 @@ end
 -- debug(itemText): what the tooltip needs, for "the tooltip shows no priorities"
 function App.debug(itemText)
   local version, build, _, interface = GetBuildInfo()
-  Chat.print(string.format("Client %s (%s), interface %s, project %s; ToadsLC %s", tostring(version), tostring(build),
-    tostring(interface), tostring(WOW_PROJECT_ID), App.VERSION))
+  Chat.print(string.format("Client %s (%s), interface %s, project %s (%s); ToadsLC %s", tostring(version), tostring(build),
+    tostring(interface), tostring(WOW_PROJECT_ID), ns.Client.name(), App.VERSION))
   local T = ns.Tooltip
   Chat.print(string.format("Tooltip hooks: %s%s; priorities %s", #T.hooks > 0 and table.concat(T.hooks, ", ") or "none",
     T.dataProcessor and " + TooltipDataProcessor" or "", Store.settings().tooltip and "on" or "off (/tlc tooltip on)"))
@@ -477,6 +474,7 @@ end
 local frame = CreateFrame("Frame")
 
 local function onRoll(text)
+  if ns.Client.secret(text) then return end -- WoW Forever hides system chat mid-fight
   local name, roll, min, max = ns.RollParser.parse(text)
   if not name then return end
   name = Roster.normalize(name)
@@ -655,7 +653,7 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(_, event, ...)
   if event == "PLAYER_LOGIN" then
     if not supportedClient() then
-      DEFAULT_CHAT_FRAME:AddMessage("|cff33cc66[ToadsLC]|r This version runs on the TBC Classic client only; it is disabled here.")
+      DEFAULT_CHAT_FRAME:AddMessage("|cff33cc66[ToadsLC]|r This version runs on the TBC Anniversary and WoW Forever clients only; it is disabled here.")
       return
     end
     start()

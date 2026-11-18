@@ -69,13 +69,26 @@ Comms.throttled = throttled
 function Comms.pending() return #queue end
 
 local budget, waitUntil = 0, 0
+-- locked(r): WoW Forever refused the send for chat messaging lockdown (a boss fight); the
+-- message waits, without using up its tries, until the fight is over
+local function locked(r)
+  if type(r) ~= "number" then return false end
+  local E = Enum and Enum.SendAddonMessageResult
+  return r == ((E and E.AddOnMessageLockdown) or 11)
+end
+Comms.locked = locked
+
 frame:SetScript("OnUpdate", function(_, dt)
   if #queue == 0 then budget = 0; return end
-  if GetTime() < waitUntil then return end
+  if GetTime() < waitUntil or ns.Client.chatLocked() then return end
   budget = math.min(PER_SECOND, budget + dt * PER_SECOND)
   while budget >= 1 and #queue > 0 do
     local q = queue[1]
     local r = send(PREFIX, q[1], q[2], q[3])
+    if locked(r) then
+      waitUntil, budget = GetTime() + Comms.RETRY_SECONDS, 0
+      return
+    end
     if throttled(r) then
       q.tries = (q.tries or 0) + 1
       if q.tries >= Comms.MAX_TRIES then table.remove(queue, 1) end

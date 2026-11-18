@@ -1,6 +1,6 @@
 # Toads LC
 
-Loot council for the Toads raid on Spineshatter EU (TBC Classic).
+Loot council for the Toads raid, on WoW Forever and TBC Classic (Anniversary).
 
 Toads LC puts the guild's agreed class priorities on item tooltips and hands out loot **by
 priority tier first, then the council's vote**. There are no rolls. Each drop opens as it's
@@ -28,9 +28,12 @@ This guide is for players and officers. If you want to change the addon itself, 
    [Releases page](https://github.com/lgriffin/toadsLC/releases) (an officer can also give it
    to you).
 2. Close World of Warcraft, or at least log out to the character screen.
-3. Unzip it into your TBC Classic AddOns folder. On Windows that is usually
-   `C:\Program Files (x86)\World of Warcraft\_anniversary_\Interface\AddOns\`
-   (older installs use `_classic_` instead of `_anniversary_`).
+3. Unzip it into the AddOns folder of the game version you play. On Windows that is usually
+   - WoW Forever: `C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\`
+   - TBC Anniversary: `C:\Program Files (x86)\World of Warcraft\_anniversary_\Interface\AddOns\`
+     (older installs use `_classic_` instead of `_anniversary_`)
+
+   The same zip works on both.
 4. Check the folder looks like this. The `ToadsLC` folder must sit directly in `AddOns`,
    with `ToadsLC.toc` inside it:
 
@@ -57,7 +60,7 @@ imported priorities and unexported loot records are kept (they live in the game'
 SavedVariables, not in the addon folder).
 
 Toads LC runs alongside Gargul, RCLootCouncil and other loot addons; each adds its own
-tooltip lines. It only loads on the TBC Classic client.
+tooltip lines. It loads on the WoW Forever and TBC Anniversary clients only.
 
 ## The Toads LC window
 
@@ -444,8 +447,13 @@ not `AddOns/toadsLC-main/...` (the source download). Fix the folder and restart 
 Tick **Load out of date AddOns** on the AddOns screen, and tell an officer: the addon needs
 the new client version number added. You can find it with `/dump select(4, GetBuildInfo())`.
 
-**"This version runs on the TBC Classic client only".**
-You're on a different game client (Era, Wrath or retail). Toads LC v1 is TBC only.
+**"This version runs on the TBC Anniversary and WoW Forever clients only".**
+You're on a different game client (Era, Wrath or retail). Toads LC runs on WoW Forever and
+TBC Anniversary only.
+
+**On WoW Forever, nothing happens until the boss is dead.**
+That's the game, not the addon: during a boss fight WoW Forever blocks addon messages and
+chat from addons. Toads LC holds what it has to say and sends it the moment the fight ends.
 
 **The tooltip shows no priorities.**
 Only clients that imported the list show it: `/tlc status` says whether you have one. Also

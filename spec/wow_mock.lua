@@ -42,6 +42,70 @@ local function newWidget(C, kind, name)
   end })
 end
 
+-- forever(C, G, member): turn the fake into the WoW Forever client (game type "camelot",
+-- project 18): item calls only under C_Item, SendChatMessage under C_ChatInfo, talents as a
+-- trait tree, no OnTooltipSetItem, and chat messaging lockdown while C.lockdown is true
+-- (addon sends refused with AddOnMessageLockdown, system chat secret). Globals the client
+-- lacks are set to false, so a client table never falls through to _G's TBC ones.
+local function forever(C, G, member)
+  G.WOW_PROJECT_ID, G.WOW_PROJECT_CAMELOT = 18, 18
+  G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC = 5
+  G.GetBuildInfo = function() return "1.60.1", "70959", "Nov 17 2026", 16001 end
+  local getItemInfo, getIcon = G.GetItemInfo, G.GetItemIcon
+  G.C_Item = {
+    GetItemInfo = getItemInfo,
+    GetItemInfoInstant = function() return nil end,
+    GetItemIconByID = getIcon,
+  }
+  G.GetItemInfo, G.GetItemInfoInstant, G.GetItemIcon = false, false, false
+  G.GetTalentTabInfo, G.IsMasterLooter = false, false
+  C.lockdown = false
+  local sendAddon = G.C_ChatInfo.SendAddonMessage
+  G.C_ChatInfo.SendAddonMessage = function(...)
+    if C.lockdown then return 11 end
+    sendAddon(...)
+    return 0
+  end
+  G.C_ChatInfo.InChatMessagingLockdown = function() return C.lockdown end
+  local sendChat = G.SendChatMessage
+  G.C_ChatInfo.SendChatMessage = function(...)
+    assert(not C.lockdown, "SendChatMessage during chat messaging lockdown")
+    sendChat(...)
+  end
+  G.SendChatMessage = false
+  G.Enum = { TooltipDataType = { Item = 0 }, SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3,
+    ChannelThrottle = 8, AddOnMessageLockdown = 11 }, LootMethod = { Masterlooter = 2 } }
+  G.TooltipDataProcessor = {
+    AddTooltipPostCall = function(kind, fn) table.insert(C.tooltipPostCalls, { kind = kind, fn = fn }) end,
+  }
+  G.GameTooltip.missingScripts = { OnTooltipSetItem = true }
+  G.ItemRefTooltip.missingScripts = { OnTooltipSetItem = true }
+  -- a secret value: a table the addon must not read
+  G.issecretvalue = function(v) return type(v) == "table" and v.secret == true end
+  -- talents: one trait tree per class, a group per talent tab (listed out of order, sorted by
+  -- orderIndex), spent points from member.talents; config -1 is the last inspected player
+  G.Constants = { TraitConsts = { INSPECT_TRAIT_CONFIG_ID = -1 } }
+  G.C_SpecializationInfo = {
+    GetActiveSpecGroup = function() return 1 end,
+    GetCombatConfigIDForSpecGroup = function(group) return 100 + group end,
+  }
+  G.C_Traits = {
+    GetConfigInfo = function(id) return { ID = id, treeIDs = { 900 } } end,
+    GetGroupDisplayInfoByTreeID = function()
+      return { { groupID = 33, orderIndex = 3 }, { groupID = 11, orderIndex = 1 }, { groupID = 22, orderIndex = 2 } }
+    end,
+    GetGroupCurrencyInfo = function(configID, ids)
+      local m = configID == -1 and C.inspecting or member("player")
+      local t = (m and m.talents) or {}
+      local out = {}
+      for _, id in ipairs(ids) do
+        out[#out + 1] = { traitNodeGroupID = id, currencyInfos = { { spent = t[id / 11] or 0 } } }
+      end
+      return out
+    end,
+  }
+end
+
 -- setup(C, G, opts): install a fake client into the global table G, its state kept on C
 local function setup(C, G, opts)
   opts = opts or {}
@@ -191,6 +255,7 @@ local function setup(C, G, opts)
     return id and string.format("|cffa335ee|Hitem:%d::::::::70:::::|h[Item %d]|h|r", id, id)
   end
   G.ChatFontNormal = {}
+  if opts.forever then forever(C, G, member) end
   -- a client in its own table starts with its own SavedVariables, never _G's
   G.ToadsLCDB = opts.db or (G ~= _G and {} or nil)
   G.ToadsLCCharDB = opts.charDb or (G ~= _G and {} or nil)

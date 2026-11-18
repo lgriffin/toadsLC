@@ -8,9 +8,11 @@ The design (requirements, JSON contract, architecture) is the Claude Doc
 ## Layout
 
 Everything that decides who wins is in `ToadsLC/core/` and runs under plain Lua 5.1;
-everything that touches the WoW API is one file in `ToadsLC/adapters/`. v1 targets the
-TBC Classic client and refuses to load on any other; when the WoW Forever API is published,
-only `ToadsLC/adapters/` is ported, and the core, the JSON documents and the site stay the same.
+everything that touches the WoW API is one file in `ToadsLC/adapters/`. The addon runs on
+the WoW Forever client (game type `camelot`, `WOW_PROJECT_ID` 18, interface 16001) and the
+TBC Anniversary client (project 5, interface 20505/20506), and refuses to load on any other.
+`adapters/Client.lua` holds every difference between the two; see
+[WoW Forever](#wow-forever) below.
 
 | File | Holds |
 | --- | --- |
@@ -20,6 +22,7 @@ only `ToadsLC/adapters/` is ported, and the core, the JSON documents and the sit
 | `core/Crypto.lua`, `core/Wire.lua` | SHA-256, HMAC, PBKDF2, base64; signing and encrypting addon messages with the raid password |
 | `core/Session.lua` | session state machine and the message registry (open, responses, votes, proposals, close, re-roll, award, late-join state) |
 | `core/LootList.lua` | the night's loot list: entries keyed by corpse and item, their status following each session, wire form and merge |
+| `adapters/Client.lua` | which client this is, and the calls that differ between WoW Forever and TBC Anniversary (item info, chat sends, chat lockdown, secret values, talent points) |
 | `adapters/Tooltip.lua` | Priority block on GameTooltip, ItemRefTooltip and comparison tooltips |
 | `adapters/RollParser.lua` | roll lines from `CHAT_MSG_SYSTEM`, built from the client's own `RANDOM_ROLL_RESULT` |
 | `adapters/CouncilComms.lua` | `ToadsLC` addon-message prefix, throttled send queue, chunk reassembly |
@@ -104,8 +107,9 @@ To redo a tag whose release run failed, delete it on both sides first:
 
 ### Interface number
 
-`## Interface: 20505, 20506` covers both TBC Anniversary client builds that current addons
-ship for (BigWigs lists both; DBM lists 20506). If the client shows Toads LC as "out of date",
+`## Interface: 20505, 20506, 16001` covers both TBC Anniversary client builds that current
+addons ship for (BigWigs lists both; DBM lists 20506) and WoW Forever 1.60.1 (16001). One
+`ToadsLC.toc` serves both clients, so one zip installs into `_anniversary_` and `_forever_`. If the client shows Toads LC as "out of date",
 run `/dump select(4, GetBuildInfo())` in game and add that number to the list.
 
 ## Loot tables
@@ -166,3 +170,23 @@ the leader sends them the current state.
   on `Druid:*` until the site's `members[]` names the spec or the LC sets it from the frame.
 - Open questions from the design doc (token set, bare "Priest", tier tokens, who may start
   a roll, multi-item tabs) are unchanged; the code follows the doc's current assumptions.
+
+## WoW Forever
+
+WoW Forever runs on the modern client, not the classic one. Blizzard's UI source for it is the
+`forever` branch of Gethe/wow-ui-source (its toc files call the game type `camelot`). What
+differs from TBC Anniversary, and how the addon handles it:
+
+| On WoW Forever | Toads LC |
+| --- | --- |
+| No global `GetItemInfo`, `GetItemInfoInstant`, `GetItemIcon`; they live under `C_Item` | `Client.itemInfo`, `itemInfoInstant`, `itemIcon` |
+| `SendChatMessage` is `C_ChatInfo.SendChatMessage` (the global is only a deprecation fallback) | `Client.sendChat` |
+| During a boss fight the client is in chat messaging lockdown (`C_ChatInfo.InChatMessagingLockdown()`): `SendAddonMessage` answers `AddOnMessageLockdown` and chat sends are refused | addon messages and chat lines wait in their queues (`Comms`, `Chat.held`) and go out when it lifts, without using up a message's retries |
+| `CHAT_MSG_SYSTEM` text is a secret value in lockdown | `onRoll` drops it (`Client.secret`) |
+| Talents are a trait tree with a group per tab; there is no `GetTalentTabInfo` | `Client.talentPoints` reads each group's spent points with `C_Traits.GetGroupCurrencyInfo` (config `INSPECT_TRAIT_CONFIG_ID` after an inspect) |
+| Tooltips have no `OnTooltipSetItem` | `TooltipDataProcessor` post calls (already there for clients without it) |
+| No `IsMasterLooter`; master loot is `C_PartyInfo.GetLootMethod()` = 2, and Blizzard's master loot frame is for epics (`LootConsts.MasterLootQualityThreshold` 4) | the mule's existing `GetLootMethod` path; whether the mule can hand out greens and blues is unchecked in game |
+
+`spec/wow_mock.lua` with `{ forever = true }` fakes this client, and `spec/forever_spec.lua`
+runs a raid night on it. Unchecked in game so far: the trait-tree spec reading, the mule, and
+how names look on Forever's region-wide realms (sender names in addon messages, `Ambiguate`).

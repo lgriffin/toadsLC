@@ -935,7 +935,7 @@ page("trades", {
     end
     p.list.fill(rows, function(row, a)
       local e = ns.Loot.list:forSession(a.session)
-      local _, link = GetItemInfo(a.itemId)
+      local _, link = ns.Client.itemInfo(a.itemId)
       setItem(row, a.itemId, link)
       row.cells.winner:SetText(a.winner)
       row.cells.item:SetText(link or a.itemName)
@@ -1256,7 +1256,7 @@ page("history", {
   layout = function(p, w, h) p.list.layout(w, h) end,
   refresh = function(p)
     p.list.fill(ns.App.awardsTonight(), function(row, r)
-      local link = r.itemId and select(2, GetItemInfo(r.itemId))
+      local link = r.itemId and select(2, ns.Client.itemInfo(r.itemId))
       setItem(row, r.itemId, link)
       row.cells.item:SetText(link or r.itemName or "?")
       row.cells.to:SetText(r.awardedTo or colourText(GREY, "not awarded"))
