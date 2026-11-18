@@ -45,7 +45,7 @@ describe("addon in a fake client", function()
     W.load()
     W.fire("PLAYER_LOGIN")
     assert.is_nil(_G.SlashCmdList.TOADSLC)
-    assert.matches("TBC Classic client only", W.printed[1])
+    assert.matches("TBC Anniversary and WoW Forever clients only", W.printed[1])
   end)
 
   it("imports the priorities document and reports it", function()

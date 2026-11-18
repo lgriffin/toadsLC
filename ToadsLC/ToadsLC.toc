@@ -1,4 +1,4 @@
-## Interface: 20505, 20506
+## Interface: 20505, 20506, 16001
 ## Title: Toads LC
 ## Notes: Toads loot priorities on item tooltips, and loot sessions resolved by priority first, roll second.
 ## IconTexture: Interface\AddOns\ToadsLC\Media\logo
@@ -17,6 +17,7 @@ core\LootList.lua
 
 data\RaidLoot.lua
 
+adapters\Client.lua
 adapters\Store.lua
 adapters\Roster.lua
 adapters\RollParser.lua

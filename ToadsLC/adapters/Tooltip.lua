@@ -55,10 +55,8 @@ Tooltip.last = nil
 -- skip(tooltip, itemId) -> reason the block is left off, or nil
 local function skip(tooltip, itemId)
   if not ns.Store.settings().tooltip then return "tooltip off (/tlc tooltip on)" end
-  if GetItemInfoInstant then
-    local _, _, _, _, _, classId = GetItemInfoInstant(itemId)
-    if classId == 9 then return "recipe" end
-  end
+  local _, _, _, _, _, classId = ns.Client.itemInfoInstant(itemId)
+  if classId == 9 then return "recipe" end
   local owner = tooltip.GetOwner and tooltip:GetOwner()
   local ownerName = owner and owner.GetName and owner:GetName()
   if ownerName ~= nil and ownerName:find("^Quest") ~= nil then return "quest reward" end
@@ -134,7 +132,7 @@ end
 -- The TBC Classic client ships TooltipDataProcessor and Enum.TooltipDataType, but its
 -- GameTooltip does not run on tooltip data, so post calls never fire there: hook
 -- OnTooltipSetItem wherever the tooltip has it, and use the data processor only for
--- tooltips without it (clients where OnTooltipSetItem is gone).
+-- tooltips without it (WoW Forever, where OnTooltipSetItem is gone).
 function Tooltip.init()
   local hooked = {}
   for _, name in ipairs({ "GameTooltip", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2" }) do

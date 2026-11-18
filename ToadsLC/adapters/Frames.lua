@@ -98,7 +98,7 @@ local function emptyText(parent)
   return fs
 end
 
-local function iconOf(itemId) return itemId and GetItemIcon(itemId) or QUESTION end
+local function iconOf(itemId) return itemId and ns.Client.itemIcon(itemId) or QUESTION end
 
 -- itemHover(parent, session): a mouse area that shows the session's item tooltip (and so
 -- its Priority block) on hover; place it over the item's icon and name.

@@ -79,16 +79,14 @@ end
 -- specFromTalents(class, inspect) -> token or nil
 local function specFromTalents(class, inspect)
   local tabs = TABS[class]
-  if not tabs or not GetTalentTabInfo then return nil end
+  if not tabs then return nil end
+  local points = ns.Client.talentPoints(inspect, #tabs)
+  if not points then return nil end
   local best, bestPoints, total = nil, -1, 0
   for i = 1, #tabs do
-    -- The return layout differs between client builds: (name, icon, points, ...) or
-    -- (id, name, description, icon, points, ...).
-    local r1, _, r3, _, r5 = GetTalentTabInfo(i, inspect)
-    local points = (type(r1) == "number" and r5) or r3
-    points = tonumber(points) or 0
-    total = total + points
-    if points > bestPoints then best, bestPoints = tabs[i], points end
+    local n = points[i] or 0
+    total = total + n
+    if n > bestPoints then best, bestPoints = tabs[i], n end
   end
   if total == 0 then return nil end
   if best == "Feral" then return nil end -- bear or cat: leave it to members[] or the LC

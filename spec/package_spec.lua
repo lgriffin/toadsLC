@@ -19,9 +19,16 @@ local NOT_IN_CLIENT = { io = true, os = true, require = true, loadfile = true, d
                         package = true, module = true, utf8 = true }
 
 describe("ToadsLC.toc", function()
-  it("names a TBC Classic interface, a title, a version and the SavedVariables", function()
+  it("names the TBC Anniversary and WoW Forever interfaces, a title, a version and the SavedVariables", function()
     local meta = tocFiles()
-    for n in meta.Interface:gmatch("[^,%s]+") do assert.matches("^205%d%d$", n) end
+    local tbc, forever = false, false
+    for n in meta.Interface:gmatch("[^,%s]+") do
+      assert.is_truthy(n:match("^205%d%d$") or n:match("^160%d%d$"), n)
+      tbc = tbc or n:match("^205") ~= nil
+      forever = forever or n:match("^160") ~= nil
+    end
+    assert.is_true(tbc)
+    assert.is_true(forever)
     assert.are.equal("Toads LC", meta.Title)
     assert.matches("^%d+%.%d+%.%d+$", meta.Version)
     assert.are.equal("ToadsLCDB", meta.SavedVariables)

@@ -55,6 +55,29 @@ local function channel(warn)
   if IsInGroup() then return "PARTY" end
 end
 
+-- WoW Forever refuses chat sends from addons during a boss fight (chat messaging lockdown):
+-- lines wait here and go out, in order, once the fight is over.
+local held = {}
+Chat.held = held
+
+local function post(text, ch, target)
+  if #held > 0 or ns.Client.chatLocked() then
+    held[#held + 1] = { text, ch, target }
+    return
+  end
+  ns.Client.sendChat(text, ch, target)
+end
+
+function Chat.flush()
+  while #held > 0 and not ns.Client.chatLocked() do
+    local h = table.remove(held, 1)
+    ns.Client.sendChat(h[1], h[2], h[3])
+  end
+end
+
+local flusher = CreateFrame("Frame")
+flusher:SetScript("OnUpdate", function() if #held > 0 then Chat.flush() end end)
+
 -- say(text, warn): warn also posts the first line as a raid warning.
 function Chat.say(text, warn)
   local ch = channel(false)
@@ -62,13 +85,13 @@ function Chat.say(text, warn)
     Chat.print(text:gsub("^%[ToadsLC%] ", ""))
     return
   end
-  for _, line in ipairs(Chat.split(text)) do SendChatMessage(line, ch) end
+  for _, line in ipairs(Chat.split(text)) do post(line, ch) end
   if warn and channel(true) == "RAID_WARNING" then
-    SendChatMessage(Chat.split(text)[1], "RAID_WARNING")
+    post(Chat.split(text)[1], "RAID_WARNING")
   end
 end
 
 -- whisper(text, target): a private line to one player, split like the rest
 function Chat.whisper(text, target)
-  for _, line in ipairs(Chat.split(text)) do SendChatMessage(line, "WHISPER", nil, target) end
+  for _, line in ipairs(Chat.split(text)) do post(line, "WHISPER", target) end
 end

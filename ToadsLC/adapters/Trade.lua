@@ -221,7 +221,7 @@ function Trade.announce(awards, name)
   local set = ns.Store.settings()
   if #awards == 0 or set.announceTrade == false or not IsInGroup() then return end
   for _, a in ipairs(awards) do
-    local link = a.link or select(2, GetItemInfo(a.itemId)) or a.itemName
+    local link = a.link or select(2, ns.Client.itemInfo(a.itemId)) or a.itemName
     local fields = { item = link, name = name, by = ns.Roster.me() }
     ns.Chat.say(ns.Session.fill(set.tradeMessage or ns.Session.TRADE_TEMPLATE, fields))
   end
